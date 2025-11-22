@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+
 import { usePathname, useRouter } from "next/navigation";
 import {
   UtensilsCrossed,
@@ -10,17 +11,45 @@ import {
   ChevronRight,
   LogOut
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [nombreUsuario, setNombreUsuario] = useState("Cargando...");
+
+  useEffect(() => {
+      cargarNombreUsuario();
+    }, []);
+
+    const cargarNombreUsuario = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { data, error } = await supabase
+            .from('usuarios')
+            .select('nombre')
+            .eq('auth_user_id', user.id)
+            .single();
+
+          if (data && !error) {
+            setNombreUsuario(data.nombre);
+          }
+        }
+      } catch (error) {
+        console.error('Error cargando nombre:', error);
+        setNombreUsuario("Mesero");
+      }
+    };
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
-    router.push('/login');
+    // Eliminar cookie manualmente
+    document.cookie = 'sb-access-token=; path=/; max-age=0';
+    window.location.href = '/login'; // 👈 Usa window.location
   };
 
   const links = [
@@ -122,8 +151,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 M
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">Mesero</p>
-                <p className="text-xs text-gray-600 truncate">mesero@restau.app</p>
+                <p className="text-sm font-semibold text-gray-800 truncate">{nombreUsuario}</p>
+                <p className="text-xs text-gray-600 truncate">Mesero</p>
               </div>
             </div>
           </div>

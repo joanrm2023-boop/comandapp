@@ -10,26 +10,56 @@ import {
   Menu,
   X,
   ChevronRight,
-  LogOut
+  LogOut,
+  Users 
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [nombreUsuario, setNombreUsuario] = useState("Cargando...");
+
+  useEffect(() => {
+      cargarNombreUsuario();
+    }, []);
+
+    const cargarNombreUsuario = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { data, error } = await supabase
+            .from('usuarios')
+            .select('nombre')
+            .eq('auth_user_id', user.id)
+            .single();
+
+          if (data && !error) {
+            setNombreUsuario(data.nombre);
+          }
+        }
+      } catch (error) {
+        console.error('Error cargando nombre:', error);
+        setNombreUsuario("Admin");
+      }
+    };
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
-    router.push('/login');
+    // Eliminar cookie manualmente
+    document.cookie = 'sb-access-token=; path=/; max-age=0';
+    window.location.href = '/login'; // 👈 Usa window.location
   };
 
   const links = [
     { href: "/admin", label: "Dashboard", icon: Home },
     { href: "/admin/menu", label: "Menú", icon: UtensilsCrossed },
     { href: "/admin/ventas", label: "Ventas", icon: DollarSign },
-    { href: "/admin/pedidos", label: "Pedidos", icon: ListChecks }
+    { href: "/admin/pedidos", label: "Pedidos", icon: ListChecks },
+    { href: "/admin/meseros", label: "Meseros", icon: Users }
   ];
 
   return (
@@ -126,8 +156,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 A
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">Admin</p>
-                <p className="text-xs text-gray-500 truncate">admin@restau.app</p>
+                <p className="text-sm font-semibold text-gray-800 truncate">{nombreUsuario}</p>
+                <p className="text-xs text-gray-500 truncate">Administrador</p>
               </div>
             </div>
           </div>

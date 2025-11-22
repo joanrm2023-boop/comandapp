@@ -18,59 +18,116 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!email || !password) {
-      setError("Por favor completa todos los campos");
-      return;
+  e.preventDefault();
+  
+  console.log('========== INICIO LOGIN ==========');
+  
+  if (!email || !password) {
+    setError("Por favor completa todos los campos");
+    return;
+  }
+
+  try {
+    setLoading(true);
+    setError("");
+
+    console.log('1️⃣ Intentando autenticar con:', { email: email.trim() });
+
+    // 1. Autenticar con Supabase Auth
+    const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: password,
+    });
+
+    console.log('2️⃣ Respuesta de auth:', {
+      success: !!authData,
+      error: signInError,
+      session: authData?.session ? 'Existe' : 'No existe',
+      user_id: authData?.user?.id
+    });
+
+    if (signInError) {
+      console.error('❌ Error en signInWithPassword:', signInError);
+      throw signInError;
     }
 
-    try {
-      setLoading(true);
-      setError("");
-
-      // 1. Autenticar con Supabase Auth
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+    // 2. Guardar token en cookie manualmente (para el middleware)
+    if (authData.session) {
+      document.cookie = `sb-access-token=${authData.session.access_token}; path=/; max-age=3600`;
+      console.log('3️⃣ Cookie guardada:', {
+        token_length: authData.session.access_token.length,
+        expires: new Date(Date.now() + 3600000).toISOString()
       });
-
-      if (signInError) throw signInError;
-
-      // 2. Obtener el rol del usuario desde la tabla 'usuarios'
-      const { data: usuarioData, error: usuarioError } = await supabase
-        .from('usuarios')
-        .select('rol, nombre')
-        .eq('auth_user_id', authData.user.id)
-        .single();
-
-      if (usuarioError) throw usuarioError;
-
-      // 3. Redirigir según el rol
-      if (usuarioData.rol === 'superadmin') {
-        router.push('/admin/menu');  // 👈 Va a /admin/menu
-      } else if (usuarioData.rol === 'mesero') {
-        router.push('/mesero');       // 👈 Va a /mesero
-      } else {
-        // Rol desconocido
-        setError('Rol de usuario no válido');
-        await supabase.auth.signOut();
-      }
-
-    } catch (err: any) {
-      console.error("Error de login:", err);
-      
-      if (err.message.includes("Invalid login credentials")) {
-        setError("Email o contraseña incorrectos");
-      } else if (err.message.includes("Email not confirmed")) {
-        setError("Por favor confirma tu email");
-      } else {
-        setError("Error al iniciar sesión. Intenta de nuevo.");
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+
+    console.log('4️⃣ Buscando usuario en tabla usuarios con auth_user_id:', authData.user.id);
+
+    // 3. Obtener el rol del usuario desde la tabla 'usuarios'
+    const { data: usuarioData, error: usuarioError } = await supabase
+      .from('usuarios')
+      .select('rol, nombre, auth_user_id')
+      .eq('auth_user_id', authData.user.id)
+      .single();
+
+    console.log('5️⃣ Respuesta de tabla usuarios:', {
+      success: !!usuarioData,
+      error: usuarioError,
+      data: usuarioData
+    });
+
+    if (usuarioError) {
+      console.error('❌ Error buscando usuario:', usuarioError);
+      throw usuarioError;
+    }
+
+    if (!usuarioData) {
+      console.error('❌ Usuario no encontrado en tabla usuarios');
+      throw new Error('Usuario no encontrado en la base de datos');
+    }
+
+    console.log('6️⃣ Usuario encontrado:', {
+      nombre: usuarioData.nombre,
+      rol: usuarioData.rol
+    });
+
+    // 4. Pequeño delay para asegurar que la cookie se guarde
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 5. Redirigir según el rol
+    console.log('7️⃣ Redirigiendo según rol:', usuarioData.rol);
+
+    if (usuarioData.rol === 'superadmin') {
+      console.log('✅ Redirigiendo a /admin/menu');
+      window.location.href = '/admin/menu';
+    } else if (usuarioData.rol === 'mesero') {
+      console.log('✅ Redirigiendo a /mesero');
+      window.location.href = '/mesero';
+    } else {
+      console.error('❌ Rol no válido:', usuarioData.rol);
+      setError('Rol de usuario no válido');
+      await supabase.auth.signOut();
+    }
+
+  } catch (err: any) {
+    console.error("========== ERROR EN LOGIN ==========");
+    console.error('Error completo:', err);
+    console.error('Error message:', err.message);
+    console.error('Error code:', err.code);
+    
+    if (err.message.includes("Invalid login credentials")) {
+      setError("Email o contraseña incorrectos");
+    } else if (err.message.includes("Email not confirmed")) {
+      setError("Por favor confirma tu email");
+    } else if (err.message.includes("no encontrado")) {
+      setError("Usuario no encontrado en la base de datos. Contacta al administrador.");
+    } else {
+      setError("Error al iniciar sesión. Intenta de nuevo.");
+    }
+  } finally {
+    setLoading(false);
+    console.log('========== FIN LOGIN ==========');
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-300 via-yellow-400 to-blue-400 flex items-center justify-center p-4">
