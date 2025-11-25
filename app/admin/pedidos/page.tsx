@@ -16,6 +16,9 @@ interface Pedido {
   estado: string;
   total: number;
   notas: string | null;
+  es_domicilio: boolean;              
+  direccion_domicilio: string | null; 
+  valor_domicilio: number;  
   created_at: string;
   mesas: {
     numero: string;
@@ -284,19 +287,63 @@ export default function PedidosPage() {
                           ))}
                         </div>
 
-                        {pedido.notas && (
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                            <p className="text-xs text-yellow-800">
-                              <strong>Nota:</strong> {pedido.notas}
-                            </p>
-                          </div>
-                        )}
+                        {/* Información de domicilio */}
+                          {pedido.es_domicilio && (
+                            <div className="bg-orange-50 border border-orange-300 rounded-lg p-3 space-y-1">
+                              <div className="flex items-center gap-2 text-orange-800 font-semibold">
+                                <span className="text-lg">🏠</span>
+                                <span>PEDIDO A DOMICILIO</span>
+                              </div>
+                              {pedido.direccion_domicilio && (
+                                <p className="text-xs text-gray-700">
+                                  <strong>Dirección:</strong> {pedido.direccion_domicilio}
+                                </p>
+                              )}
+                              <p className="text-xs text-orange-700 font-semibold">
+                                Costo envío: ${Number(pedido.valor_domicilio || 0).toLocaleString()}
+                              </p>
+                            </div>
+                          )}
 
-                        <div className="flex justify-between items-center pt-3 border-t-2 border-gray-200">
-                          <span className="text-lg font-bold text-gray-700">TOTAL:</span>
-                          <span className="text-2xl font-bold text-green-700">
-                            ${Number(pedido.total).toLocaleString()}
-                          </span>
+                          {/* Notas generales */}
+                          {pedido.notas && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                              <p className="text-xs text-yellow-800">
+                                <strong>Nota:</strong> {pedido.notas}
+                              </p>
+                            </div>
+                          )}
+
+                        <div className="pt-3 border-t-2 border-gray-200">
+                          {pedido.es_domicilio ? (
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-gray-600 text-sm">
+                                <span>Subtotal productos:</span>
+                                <span className="font-semibold">
+                                  ${Number(pedido.total - (pedido.valor_domicilio || 0)).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-orange-600 text-sm">
+                                <span>Domicilio:</span>
+                                <span className="font-semibold">
+                                  ${Number(pedido.valor_domicilio || 0).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                                <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                <span className="text-2xl font-bold text-green-700">
+                                  ${Number(pedido.total).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex justify-between items-center">
+                              <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                              <span className="text-2xl font-bold text-green-700">
+                                ${Number(pedido.total).toLocaleString()}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex gap-2 pt-2">
@@ -404,19 +451,63 @@ export default function PedidosPage() {
                             ))}
                           </div>
 
-                          {pedido.notas && (
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                              <p className="text-xs text-yellow-800">
-                                <strong>Nota:</strong> {pedido.notas}
-                              </p>
-                            </div>
-                          )}
+                          {/* Información de domicilio */}
+                            {pedido.es_domicilio && (
+                              <div className="bg-orange-50 border border-orange-300 rounded-lg p-3 space-y-1">
+                                <div className="flex items-center gap-2 text-orange-800 font-semibold">
+                                  <span className="text-lg">🏠</span>
+                                  <span>PEDIDO A DOMICILIO</span>
+                                </div>
+                                {pedido.direccion_domicilio && (
+                                  <p className="text-xs text-gray-700">
+                                    <strong>Dirección:</strong> {pedido.direccion_domicilio}
+                                  </p>
+                                )}
+                                <p className="text-xs text-orange-700 font-semibold">
+                                  Costo envío: ${Number(pedido.valor_domicilio || 0).toLocaleString()}
+                                </p>
+                              </div>
+                            )}
 
-                          <div className="flex justify-between items-center pt-3 border-t-2 border-gray-200">
-                            <span className="text-lg font-bold text-gray-700">TOTAL:</span>
-                            <span className="text-2xl font-bold text-green-700">
-                              ${Number(pedido.total).toLocaleString()}
-                            </span>
+                            {/* Notas generales */}
+                            {pedido.notas && (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <p className="text-xs text-yellow-800">
+                                  <strong>Nota:</strong> {pedido.notas}
+                                </p>
+                              </div>
+                            )}
+
+                          <div className="pt-3 border-t-2 border-gray-200">
+                            {pedido.es_domicilio ? (
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-gray-600 text-sm">
+                                  <span>Subtotal productos:</span>
+                                  <span className="font-semibold">
+                                    ${Number(pedido.total - (pedido.valor_domicilio || 0)).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-orange-600 text-sm">
+                                  <span>Domicilio:</span>
+                                  <span className="font-semibold">
+                                    ${Number(pedido.valor_domicilio || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                                  <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                  <span className="text-2xl font-bold text-green-700">
+                                    ${Number(pedido.total).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex justify-between items-center">
+                                <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                <span className="text-2xl font-bold text-green-700">
+                                  ${Number(pedido.total).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex gap-2 pt-2">
@@ -524,11 +615,36 @@ export default function PedidosPage() {
                             ))}
                           </div>
 
-                          <div className="flex justify-between items-center pt-3 border-t-2 border-gray-200">
-                            <span className="text-lg font-bold text-gray-700">TOTAL:</span>
-                            <span className="text-2xl font-bold text-green-700">
-                              ${Number(pedido.total).toLocaleString()}
-                            </span>
+                          <div className="pt-3 border-t-2 border-gray-200">
+                            {pedido.es_domicilio ? (
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-gray-600 text-sm">
+                                  <span>Subtotal productos:</span>
+                                  <span className="font-semibold">
+                                    ${Number(pedido.total - (pedido.valor_domicilio || 0)).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-orange-600 text-sm">
+                                  <span>Domicilio:</span>
+                                  <span className="font-semibold">
+                                    ${Number(pedido.valor_domicilio || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                                  <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                  <span className="text-2xl font-bold text-green-700">
+                                    ${Number(pedido.total).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex justify-between items-center">
+                                <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                <span className="text-2xl font-bold text-green-700">
+                                  ${Number(pedido.total).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -615,11 +731,36 @@ export default function PedidosPage() {
                             ))}
                           </div>
 
-                          <div className="flex justify-between items-center pt-3 border-t-2 border-gray-200">
-                            <span className="text-lg font-bold text-gray-700">TOTAL:</span>
-                            <span className="text-2xl font-bold text-green-700">
-                              ${Number(pedido.total).toLocaleString()}
-                            </span>
+                          <div className="pt-3 border-t-2 border-gray-200">
+                            {pedido.es_domicilio ? (
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-gray-600 text-sm">
+                                  <span>Subtotal productos:</span>
+                                  <span className="font-semibold">
+                                    ${Number(pedido.total - (pedido.valor_domicilio || 0)).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-orange-600 text-sm">
+                                  <span>Domicilio:</span>
+                                  <span className="font-semibold">
+                                    ${Number(pedido.valor_domicilio || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                                  <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                  <span className="text-2xl font-bold text-green-700">
+                                    ${Number(pedido.total).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex justify-between items-center">
+                                <span className="text-lg font-bold text-gray-700">TOTAL:</span>
+                                <span className="text-2xl font-bold text-green-700">
+                                  ${Number(pedido.total).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>

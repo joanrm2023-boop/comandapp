@@ -3,10 +3,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, ShoppingCart, Plus, Minus, Send, X, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { StickyNote, Search, ShoppingCart, Plus, Minus, Send, X, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { toast, Toaster } from "sonner";
 
 // Tipos
 interface Categoria {
@@ -40,6 +43,7 @@ interface Mesa {
 interface ItemPedido {
   producto: Producto;
   cantidad: number;
+  notas: string; 
 }
 
 interface GrupoProductos {
@@ -64,6 +68,12 @@ export default function MeseroPage() {
   // Carrito de pedido
   const [pedido, setPedido] = useState<ItemPedido[]>([]);
   const [mostrarResumen, setMostrarResumen] = useState(false);
+  const [modalNotasOpen, setModalNotasOpen] = useState(false);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
+  const [cantidadTemp, setCantidadTemp] = useState(1);
+  const [notasTemp, setNotasTemp] = useState("");
+  const [direccionDomicilio, setDireccionDomicilio] = useState("");
+  const [valorDomicilio, setValorDomicilio] = useState("");
 
   useEffect(() => {
     cargarDatos();
@@ -156,17 +166,50 @@ export default function MeseroPage() {
   }, [productosFiltrados]);
 
   const agregarProducto = (producto: Producto) => {
+    // Abrir modal para agregar notas
+    setProductoSeleccionado(producto);
+    
+    // Si ya existe en el pedido, cargar su cantidad y notas
+    const itemExistente = pedido.find(item => item.producto.id === producto.id);
+    if (itemExistente) {
+      setCantidadTemp(itemExistente.cantidad);
+      setNotasTemp(itemExistente.notas);
+    } else {
+      setCantidadTemp(1);
+      setNotasTemp("");
+    }
+    
+    setModalNotasOpen(true);
+  };
+
+  const confirmarProducto = () => {
+    if (!productoSeleccionado || cantidadTemp <= 0) return;
+
     setPedido(prev => {
-      const existe = prev.find(item => item.producto.id === producto.id);
+      const existe = prev.find(item => item.producto.id === productoSeleccionado.id);
+      
       if (existe) {
+        // Actualizar existente
         return prev.map(item =>
-          item.producto.id === producto.id
-            ? { ...item, cantidad: item.cantidad + 1 }
+          item.producto.id === productoSeleccionado.id
+            ? { ...item, cantidad: cantidadTemp, notas: notasTemp }
             : item
         );
       }
-      return [...prev, { producto, cantidad: 1 }];
+      
+      // Agregar nuevo
+      return [...prev, { 
+        producto: productoSeleccionado, 
+        cantidad: cantidadTemp,
+        notas: notasTemp 
+      }];
     });
+
+    // Cerrar modal
+    setModalNotasOpen(false);
+    setProductoSeleccionado(null);
+    setCantidadTemp(1);
+    setNotasTemp("");
   };
 
   const cambiarCantidad = (productoId: string, delta: number) => {
@@ -190,19 +233,41 @@ export default function MeseroPage() {
     return pedido.reduce((sum, item) => sum + (item.producto.precio * item.cantidad), 0);
   };
 
+  const esDomicilio = () => {
+      const mesaSelec = mesas.find(m => m.id === mesaSeleccionada);
+      return mesaSelec?.numero.toLowerCase().includes('domicilio');
+    };
+
   const enviarPedido = async () => {
     if (!mesaSeleccionada) {
-      alert('Por favor selecciona una mesa');
+      toast.error('Por favor selecciona una mesa');
       return;
     }
 
     if (pedido.length === 0) {
-      alert('El pedido está vacío');
+      toast.error('El pedido está vacío');
       return;
+    }
+
+    // 👇 NUEVO: Validar campos de domicilio
+    if (esDomicilio()) {
+      if (!direccionDomicilio.trim()) {
+        toast.error('Por favor ingresa la dirección de entrega');
+        return;
+      }
+      if (!valorDomicilio || parseFloat(valorDomicilio) <= 0) {
+        toast.error('Por favor ingresa un valor de domicilio válido');
+        return;
+      }
     }
 
     try {
       setEnviando(true);
+
+      // 👇 NUEVO: Calcular total incluyendo domicilio
+      const totalProductos = calcularTotal();
+      const costoEnvio = esDomicilio() ? parseFloat(valorDomicilio || '0') : 0;
+      const totalFinal = totalProductos + costoEnvio;
 
       // Crear pedido
       const { data: pedidoData, error: errorPedido } = await supabase
@@ -210,20 +275,24 @@ export default function MeseroPage() {
         .insert([{
           mesa_id: mesaSeleccionada,
           estado: 'pendiente',
-          total: calcularTotal()
+          total: totalFinal, // 👈 Ahora incluye domicilio
+          es_domicilio: esDomicilio(), // 👈 NUEVO
+          direccion_domicilio: esDomicilio() ? direccionDomicilio : null, // 👈 NUEVO
+          valor_domicilio: costoEnvio // 👈 NUEVO
         }])
         .select()
         .single();
 
       if (errorPedido) throw errorPedido;
 
-      // Crear detalles del pedido
+      // Crear detalles del pedido (IGUAL QUE ANTES)
       const detalles = pedido.map(item => ({
         pedido_id: pedidoData.id,
         producto_id: item.producto.id,
         cantidad: item.cantidad,
         precio_unitario: item.producto.precio,
-        subtotal: item.producto.precio * item.cantidad
+        subtotal: item.producto.precio * item.cantidad,
+        notas: item.notas || null
       }));
 
       const { error: errorDetalles } = await supabase
@@ -232,20 +301,75 @@ export default function MeseroPage() {
 
       if (errorDetalles) throw errorDetalles;
 
-      // Actualizar estado de mesa
-      await supabase
-        .from('mesas')
-        .update({ estado: 'ocupada' })
-        .eq('id', mesaSeleccionada);
+      // Actualizar estado de mesa (SOLO si NO es domicilio)
+      if (!esDomicilio()) {
+        await supabase
+          .from('mesas')
+          .update({ estado: 'ocupada' })
+          .eq('id', mesaSeleccionada);
+      }
 
-      // Limpiar pedido
+      // 🖨️ NUEVO: Enviar a imprimir
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          
+          const response = await fetch('/api/imprimir-pedido', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              mesa: mesas.find(m => m.id === mesaSeleccionada)?.numero || 'N/A',
+              mesero: user?.user_metadata?.nombre || user?.email || 'Mesero',
+              items: pedido,
+              total: totalFinal,
+              fecha: new Date().toLocaleString('es-CO', {
+                dateStyle: 'short',
+                timeStyle: 'short'
+              }),
+              es_domicilio: esDomicilio(),
+              direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
+              valor_domicilio: esDomicilio() ? costoEnvio : 0
+            })
+          });
+
+          const resultado = await response.json();
+          
+          if (!resultado.success) {
+            console.error('⚠️ Error al imprimir:', resultado.error);
+            // No bloqueamos el pedido si falla la impresión
+          } else {
+            console.log('✅ Comanda impresa correctamente');
+          }
+        } catch (errorImpresion) {
+          console.error('⚠️ Error llamando a impresora:', errorImpresion);
+          // Continuamos aunque falle la impresión
+        }
+
+      const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
+
+      // Limpiar campos
       setPedido([]);
       setMesaSeleccionada("");
+      setDireccionDomicilio("");
+      setValorDomicilio("");
       setMostrarResumen(false);
-      alert('¡Pedido enviado a cocina exitosamente!');
+
+      // Mostrar notificación con la info guardada
+      toast.success('¡Pedido enviado exitosamente! 🎉', {
+        description: `Mesa ${mesaNumero} - Total: $${totalFinal.toLocaleString()}`,
+        duration: 5000,
+        style: {
+          fontSize: '18px',
+          padding: '24px',
+          minHeight: '100px',
+          fontWeight: '600',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)'
+        }
+      });
     } catch (err) {
       console.error('Error enviando pedido:', err);
-      alert('Error al enviar el pedido');
+      toast.error('Error al enviar el pedido');
     } finally {
       setEnviando(false);
     }
@@ -280,8 +404,6 @@ export default function MeseroPage() {
           </div>
 
           <div className="flex gap-3 items-center">
-            
-
             <Button
               onClick={() => setMostrarResumen(!mostrarResumen)}
               className="bg-gradient-to-r from-yellow-400 to-blue-500 hover:from-yellow-500 hover:to-blue-600 relative"
@@ -408,71 +530,139 @@ export default function MeseroPage() {
       </div>
 
       {/* Panel Resumen Flotante */}
-      {mostrarResumen && pedido.length > 0 && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
-          onClick={() => setMostrarResumen(false)}
-        >
-          <Card className="w-full max-w-md max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white space-y-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">Resumen del Pedido</CardTitle>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-white hover:bg-white/20"
-                onClick={() => setMostrarResumen(false)}
-              >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
-            
-            {/* Selector de mesa mejorado */}
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
-              <label className="text-sm font-medium block mb-2 flex items-center gap-2">
-                <span className="text-lg">🪑</span>
-                Mesa para el pedido:
-              </label>
-              <Select value={mesaSeleccionada} onValueChange={setMesaSeleccionada}>
-                <SelectTrigger className="w-full h-11 bg-white text-gray-800 border-0 font-semibold shadow-md">
-                  <SelectValue placeholder="🪑 Seleccionar mesa..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {mesas.filter(m => m.estado === 'libre').map((mesa) => (
-                    <SelectItem key={mesa.id} value={mesa.id} className="font-medium">
-                      🪑 {mesa.numero}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-            <CardContent className="p-4 space-y-3">
-              {pedido.map((item) => (
-                <div key={item.producto.id} className="flex justify-between items-center border-b pb-2">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{item.cantidad}x {item.producto.nombre}</p>
-                    <p className="text-xs text-gray-500">${Number(item.producto.precio).toLocaleString()} c/u</p>
-                  </div>
-                  <p className="font-bold text-green-700">
-                    ${(item.producto.precio * item.cantidad).toLocaleString()}
-                  </p>
+        {mostrarResumen && pedido.length > 0 && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
+            onClick={() => setMostrarResumen(false)}
+          >
+            <Card className="w-full max-w-md max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+              <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white space-y-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl">Resumen del Pedido</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-white hover:bg-white/20"
+                    onClick={() => setMostrarResumen(false)}
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
                 </div>
-              ))}
+                
+                {/* Selector de mesa */}
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
+                  <label className="text-sm font-medium block mb-2 flex items-center gap-2">
+                    <span className="text-lg">🪑</span>
+                    Mesa para el pedido:
+                  </label>
+                  <Select value={mesaSeleccionada} onValueChange={setMesaSeleccionada}>
+                    <SelectTrigger className="w-full h-11 bg-white text-gray-800 border-0 font-semibold shadow-md">
+                      <SelectValue placeholder="🪑 Seleccionar mesa..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mesas.filter(m => m.estado === 'libre').map((mesa) => (
+                        <SelectItem key={mesa.id} value={mesa.id} className="font-medium">
+                          🪑 {mesa.numero}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* 🏠 CAMPOS PARA DOMICILIO */}
+                {esDomicilio() && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
+                    <div className="flex items-center gap-2 text-orange-800 font-semibold">
+                      <span className="text-lg">🏠</span>
+                      <span>Pedido a domicilio</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Dirección de entrega
+                      </label>
+                      <Input
+                        placeholder="Ej: Calle 123 #45-67, Apto 301"
+                        value={direccionDomicilio}
+                        onChange={(e) => setDireccionDomicilio(e.target.value)}
+                        className="bg-white text-gray-800"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Valor del domicilio
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="Ej: 5000"
+                        value={valorDomicilio}
+                        onChange={(e) => setValorDomicilio(e.target.value)}
+                        className="bg-white text-gray-800"
+                      />
+                    </div>
+                  </div>
+                )}
+                
+              </CardHeader>
               
-              <div className="pt-3 border-t-2 border-gray-300">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-lg font-bold">TOTAL:</span>
-                  <span className="text-2xl font-bold text-green-700">
-                    ${calcularTotal().toLocaleString()}
-                  </span>
+              <CardContent className="p-4 space-y-3">
+                {pedido.map((item) => (
+                  <div key={item.producto.id} className="border-b pb-3 mb-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{item.cantidad}x {item.producto.nombre}</p>
+                        <p className="text-xs text-gray-500">${Number(item.producto.precio).toLocaleString()} c/u</p>
+                        {item.notas && (
+                          <p className="text-xs text-orange-600 mt-1 flex items-start gap-1">
+                            <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                            <span className="italic">{item.notas}</span>
+                          </p>
+                        )}
+                      </div>
+                      <p className="font-bold text-green-700 ml-2">
+                        ${(item.producto.precio * item.cantidad).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="pt-3 border-t-2 border-gray-200 space-y-2">
+                  {/* Subtotal productos */}
+                  <div className="flex justify-between items-center text-gray-700">
+                    <span className="font-medium">Subtotal:</span>
+                    <span className="font-bold">
+                      ${calcularTotal().toLocaleString()}
+                    </span>
+                  </div>
+                  
+                  {/* Costo domicilio (solo si aplica) */}
+                  {esDomicilio() && valorDomicilio && (
+                    <div className="flex justify-between items-center text-orange-700">
+                      <span className="font-medium">Domicilio:</span>
+                      <span className="font-bold">
+                        ${parseFloat(valorDomicilio).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Total final */}
+                  <div className="flex justify-between items-center pt-2 border-t-2 border-gray-300">
+                    <span className="text-lg font-bold">TOTAL:</span>
+                    <span className="text-2xl font-bold text-green-700">
+                      ${(calcularTotal() + (esDomicilio() && valorDomicilio ? parseFloat(valorDomicilio) : 0)).toLocaleString()}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 pt-3">
                   <Button
                     variant="outline"
                     className="flex-1"
                     onClick={() => {
                       setPedido([]);
+                      setMesaSeleccionada("");
+                      setDireccionDomicilio("");
+                      setValorDomicilio("");
                       setMostrarResumen(false);
                     }}
                   >
@@ -497,13 +687,12 @@ export default function MeseroPage() {
                     )}
                   </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-      {/* Botón flotante del resumen (móvil) */}
+      {/* Botón flotante del resumen */}
       {pedido.length > 0 && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto z-40">
           <Button
@@ -515,6 +704,78 @@ export default function MeseroPage() {
           </Button>
         </div>
       )}
+
+      {/* Modal para Agregar Notas */}
+      <Dialog open={modalNotasOpen} onOpenChange={setModalNotasOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              {productoSeleccionado?.nombre}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Cantidad */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cantidad</label>
+              <div className="flex items-center justify-center gap-4 bg-gray-100 rounded-lg p-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCantidadTemp(Math.max(1, cantidadTemp - 1))}
+                >
+                  <Minus className="w-4 h-4" />
+                </Button>
+                <span className="text-2xl font-bold w-12 text-center">{cantidadTemp}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCantidadTemp(cantidadTemp + 1)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Notas */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <StickyNote className="w-4 h-4" />
+                Notas especiales (opcional)
+              </label>
+              <Textarea
+                placeholder="Ej: Sin cebolla, sin queso, término medio..."
+                value={notasTemp}
+                onChange={(e) => setNotasTemp(e.target.value)}
+                className="min-h-[100px] resize-none"
+              />
+            </div>
+
+            {/* Precio total */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Subtotal:</span>
+                <span className="text-xl font-bold text-green-700">
+                  ${((productoSeleccionado?.precio || 0) * cantidadTemp).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalNotasOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmarProducto}
+              className="bg-gradient-to-r from-green-500 to-green-600"
+            >
+              Agregar al Pedido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Toaster position="top-center" richColors />
     </div>
   );
 }
