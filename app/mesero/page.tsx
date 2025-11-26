@@ -64,6 +64,7 @@ export default function MeseroPage() {
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [medioPago, setMedioPago] = useState<string>("");
   
   // Carrito de pedido
   const [pedido, setPedido] = useState<ItemPedido[]>([]);
@@ -249,6 +250,11 @@ export default function MeseroPage() {
       return;
     }
 
+    if (!medioPago) {
+      toast.error('Por favor selecciona un medio de pago');
+      return;
+    }
+
     // 👇 NUEVO: Validar campos de domicilio
     if (esDomicilio()) {
       if (!direccionDomicilio.trim()) {
@@ -278,7 +284,8 @@ export default function MeseroPage() {
           total: totalFinal, // 👈 Ahora incluye domicilio
           es_domicilio: esDomicilio(), // 👈 NUEVO
           direccion_domicilio: esDomicilio() ? direccionDomicilio : null, // 👈 NUEVO
-          valor_domicilio: costoEnvio // 👈 NUEVO
+          valor_domicilio: costoEnvio, // 👈 NUEVO
+          medio_pago: medioPago
         }])
         .select()
         .single();
@@ -309,42 +316,63 @@ export default function MeseroPage() {
           .eq('id', mesaSeleccionada);
       }
 
-      // 🖨️ NUEVO: Enviar a imprimir
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          
-          const response = await fetch('/api/imprimir-pedido', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              mesa: mesas.find(m => m.id === mesaSeleccionada)?.numero || 'N/A',
-              mesero: user?.user_metadata?.nombre || user?.email || 'Mesero',
-              items: pedido,
-              total: totalFinal,
-              fecha: new Date().toLocaleString('es-CO', {
-                dateStyle: 'short',
-                timeStyle: 'short'
-              }),
-              es_domicilio: esDomicilio(),
-              direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
-              valor_domicilio: esDomicilio() ? costoEnvio : 0
-            })
-          });
+        // 🖨️ Enviar a imprimir directamente al servidor local
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            // 👇 FORMATO DE FECHA SIMPLIFICADO (sin caracteres especiales)
+            const ahora = new Date();
+            const dia = ahora.getDate().toString().padStart(2, '0');
+            const mes = (ahora.getMonth() + 1).toString().padStart(2, '0');
+            const anio = ahora.getFullYear();
+            let hora = ahora.getHours();
+            const minutos = ahora.getMinutes().toString().padStart(2, '0');
+            const ampm = hora >= 12 ? 'PM' : 'AM';  // 👈 Sin puntos
+            hora = hora % 12 || 12;
+            
+            const fechaFormateada = `${dia}/${mes}/${anio}, ${hora}:${minutos} ${ampm}`;
+            
+            const response = await fetch('http://localhost:3001/print', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                pedido: {
+                  mesa: mesas.find(m => m.id === mesaSeleccionada)?.numero || 'N/A',
+                  mesero: user?.user_metadata?.nombre || user?.email || 'Mesero',
+                  items: pedido.map(item => ({
+                    cantidad: item.cantidad,
+                    nombre: item.producto.nombre,
+                    precio: item.producto.precio,
+                    notas: item.notas || null
+                  })),
+                  total: totalFinal,
+                  fecha: fechaFormateada,  // 👈 Usar fecha formateada
+                  es_domicilio: esDomicilio(),
+                  direccion: esDomicilio() ? direccionDomicilio : null,
+                  valor_domicilio: esDomicilio() ? costoEnvio : 0,
+                  medio_pago: medioPago
+                }
+              })
+            });
 
-          const resultado = await response.json();
-          
-          if (!resultado.success) {
-            console.error('⚠️ Error al imprimir:', resultado.error);
-            // No bloqueamos el pedido si falla la impresión
-          } else {
-            console.log('✅ Comanda impresa correctamente');
+            if (!response.ok) {
+              throw new Error(`Error del servidor: ${response.status}`);
+            }
+
+            const resultado = await response.json();
+            
+            if (!resultado.success) {
+              console.error('⚠️ Error al imprimir:', resultado.error);
+              // No bloqueamos el pedido si falla la impresión
+            } else {
+              console.log('✅ Comanda impresa correctamente');
+            }
+          } catch (errorImpresion) {
+            console.error('⚠️ Error conectando con impresora:', errorImpresion);
+            // Continuamos aunque falle la impresión
           }
-        } catch (errorImpresion) {
-          console.error('⚠️ Error llamando a impresora:', errorImpresion);
-          // Continuamos aunque falle la impresión
-        }
 
       const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
 
@@ -354,6 +382,7 @@ export default function MeseroPage() {
       setDireccionDomicilio("");
       setValorDomicilio("");
       setMostrarResumen(false);
+      setMedioPago("");
 
       // Mostrar notificación con la info guardada
       toast.success('¡Pedido enviado exitosamente! 🎉', {
@@ -605,6 +634,25 @@ export default function MeseroPage() {
                 
               </CardHeader>
               
+              {/* 💳 SELECTOR DE MEDIO DE PAGO */}
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
+                  <label className="text-sm font-medium block mb-2 flex items-center gap-2">
+                    <span className="text-lg">💳</span>
+                    Medio de pago:
+                  </label>
+                  <Select value={medioPago} onValueChange={setMedioPago}>
+                    <SelectTrigger className="w-full h-11 bg-white text-gray-800 border-0 font-semibold shadow-md">
+                      <SelectValue placeholder="💳 Seleccionar medio de pago..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="efectivo">💵 Efectivo</SelectItem>
+                      <SelectItem value="nequi">📱 Nequi</SelectItem>
+                      <SelectItem value="daviplata">📲 Daviplata</SelectItem>
+                      <SelectItem value="bold">💳 Bold</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
               <CardContent className="p-4 space-y-3">
                 {pedido.map((item) => (
                   <div key={item.producto.id} className="border-b pb-3 mb-3">
@@ -664,6 +712,7 @@ export default function MeseroPage() {
                       setDireccionDomicilio("");
                       setValorDomicilio("");
                       setMostrarResumen(false);
+                      setMedioPago("");
                     }}
                   >
                     <X className="w-4 h-4 mr-2" />
