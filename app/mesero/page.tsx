@@ -255,7 +255,6 @@ export default function MeseroPage() {
       return;
     }
 
-    // 👇 NUEVO: Validar campos de domicilio
     if (esDomicilio()) {
       if (!direccionDomicilio.trim()) {
         toast.error('Por favor ingresa la dirección de entrega');
@@ -270,21 +269,47 @@ export default function MeseroPage() {
     try {
       setEnviando(true);
 
-      // 👇 NUEVO: Calcular total incluyendo domicilio
       const totalProductos = calcularTotal();
       const costoEnvio = esDomicilio() ? parseFloat(valorDomicilio || '0') : 0;
       const totalFinal = totalProductos + costoEnvio;
 
-      // Crear pedido
+      // 👇 OBTENER USUARIO AUTENTICADO
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('Error obteniendo usuario:', userError);
+        toast.error('Error: No se pudo identificar al mesero');
+        setEnviando(false);
+        return;
+      }
+
+      // 👇 BUSCAR EN TABLA USUARIOS
+      const { data: usuarioData, error: usuarioError } = await supabase
+        .from('usuarios')
+        .select('id, nombre, rol')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (usuarioError || !usuarioData) {
+        console.error('Error obteniendo datos de usuario:', usuarioError);
+        toast.error('Error: Usuario no encontrado en el sistema');
+        setEnviando(false);
+        return;
+      }
+
+      console.log('👤 Mesero:', usuarioData.nombre, '- Rol:', usuarioData.rol);
+
+      // Crear pedido CON mesero_id de la tabla usuarios
       const { data: pedidoData, error: errorPedido } = await supabase
         .from('pedidos')
         .insert([{
           mesa_id: mesaSeleccionada,
+          mesero_id: usuarioData.id,  // 👈 usuarios.id
           estado: 'pendiente',
-          total: totalFinal, // 👈 Ahora incluye domicilio
-          es_domicilio: esDomicilio(), // 👈 NUEVO
-          direccion_domicilio: esDomicilio() ? direccionDomicilio : null, // 👈 NUEVO
-          valor_domicilio: costoEnvio, // 👈 NUEVO
+          total: totalFinal,
+          es_domicilio: esDomicilio(),
+          direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
+          valor_domicilio: costoEnvio,
           medio_pago: medioPago
         }])
         .select()
@@ -292,7 +317,7 @@ export default function MeseroPage() {
 
       if (errorPedido) throw errorPedido;
 
-      // Crear detalles del pedido (IGUAL QUE ANTES)
+      // Crear detalles del pedido
       const detalles = pedido.map(item => ({
         pedido_id: pedidoData.id,
         producto_id: item.producto.id,
@@ -307,7 +332,6 @@ export default function MeseroPage() {
         .insert(detalles);
 
       if (errorDetalles) throw errorDetalles;
-        
 
       const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
 
@@ -319,7 +343,7 @@ export default function MeseroPage() {
       setMostrarResumen(false);
       setMedioPago("");
 
-      // Mostrar notificación con la info guardada
+      // Mostrar notificación
       toast.success('¡Pedido enviado exitosamente! 🎉', {
         description: `Mesa ${mesaNumero} - Total: $${totalFinal.toLocaleString()}`,
         duration: 5000,
