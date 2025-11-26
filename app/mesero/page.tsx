@@ -316,63 +316,7 @@ export default function MeseroPage() {
           .eq('id', mesaSeleccionada);
       }
 
-        // 🖨️ Enviar a imprimir directamente al servidor local
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            
-            // 👇 FORMATO DE FECHA SIMPLIFICADO (sin caracteres especiales)
-            const ahora = new Date();
-            const dia = ahora.getDate().toString().padStart(2, '0');
-            const mes = (ahora.getMonth() + 1).toString().padStart(2, '0');
-            const anio = ahora.getFullYear();
-            let hora = ahora.getHours();
-            const minutos = ahora.getMinutes().toString().padStart(2, '0');
-            const ampm = hora >= 12 ? 'PM' : 'AM';  // 👈 Sin puntos
-            hora = hora % 12 || 12;
-            
-            const fechaFormateada = `${dia}/${mes}/${anio}, ${hora}:${minutos} ${ampm}`;
-            
-            const response = await fetch('http://localhost:3001/print', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                pedido: {
-                  mesa: mesas.find(m => m.id === mesaSeleccionada)?.numero || 'N/A',
-                  mesero: user?.user_metadata?.nombre || user?.email || 'Mesero',
-                  items: pedido.map(item => ({
-                    cantidad: item.cantidad,
-                    nombre: item.producto.nombre,
-                    precio: item.producto.precio,
-                    notas: item.notas || null
-                  })),
-                  total: totalFinal,
-                  fecha: fechaFormateada,  // 👈 Usar fecha formateada
-                  es_domicilio: esDomicilio(),
-                  direccion: esDomicilio() ? direccionDomicilio : null,
-                  valor_domicilio: esDomicilio() ? costoEnvio : 0,
-                  medio_pago: medioPago
-                }
-              })
-            });
-
-            if (!response.ok) {
-              throw new Error(`Error del servidor: ${response.status}`);
-            }
-
-            const resultado = await response.json();
-            
-            if (!resultado.success) {
-              console.error('⚠️ Error al imprimir:', resultado.error);
-              // No bloqueamos el pedido si falla la impresión
-            } else {
-              console.log('✅ Comanda impresa correctamente');
-            }
-          } catch (errorImpresion) {
-            console.error('⚠️ Error conectando con impresora:', errorImpresion);
-            // Continuamos aunque falle la impresión
-          }
+        
 
       const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
 
@@ -588,7 +532,7 @@ export default function MeseroPage() {
                       <SelectValue placeholder="🪑 Seleccionar mesa..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {mesas.filter(m => m.estado === 'libre').map((mesa) => (
+                      {mesas.map((mesa) => ( 
                         <SelectItem key={mesa.id} value={mesa.id} className="font-medium">
                           🪑 {mesa.numero}
                         </SelectItem>
