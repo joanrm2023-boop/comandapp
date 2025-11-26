@@ -88,6 +88,8 @@ export default function PedidosPage() {
   };
 
   useEffect(() => {
+    console.log('🟢 INICIANDO: useEffect de Realtime');
+    
     cargarPedidos();
     
     // Escuchar nuevos pedidos e imprimir automáticamente
@@ -96,16 +98,24 @@ export default function PedidosPage() {
       .on('postgres_changes', 
         { event: 'INSERT', schema: 'public', table: 'pedidos' },
         (payload) => {
-          console.log('🔔 Nuevo pedido recibido:', payload.new);
+          console.log('🟢 EVENTO REALTIME RECIBIDO');
+          console.log('🟢 Payload completo:', payload);
+          console.log('🟢 Nuevo pedido:', payload.new);
+          console.log('🟢 ID del pedido:', payload.new.id);
+          
           cargarPedidos();
           
           // 🖨️ IMPRIMIR AUTOMÁTICAMENTE
+          console.log('🟢 Llamando a imprimirPedidoAutomatico con ID:', payload.new.id);
           imprimirPedidoAutomatico(payload.new.id);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('🟢 Estado de suscripción Realtime:', status);
+      });
 
     return () => {
+      console.log('🟢 LIMPIANDO: Cerrando suscripción Realtime');
       subscription.unsubscribe();
     };
   }, [filtroFecha, fechaInicio, fechaFin]);
@@ -169,7 +179,8 @@ export default function PedidosPage() {
   // Función para imprimir automáticamente
   const imprimirPedidoAutomatico = async (pedidoId: string) => {
     try {
-      console.log('🖨️ Preparando impresión para pedido:', pedidoId);
+      console.log('🔵 PASO 1: imprimirPedidoAutomatico ejecutándose');
+      console.log('🔵 pedidoId:', pedidoId);
       
       // Obtener datos completos del pedido
       const { data: pedido, error } = await supabase
@@ -187,15 +198,17 @@ export default function PedidosPage() {
         .eq('id', pedidoId)
         .single();
 
+      console.log('🔵 PASO 2: Datos del pedido:', pedido);
+
       if (error || !pedido) {
         console.error('❌ Error obteniendo pedido:', error);
         return;
       }
 
-      // Usar numero_pedido si existe, sino usar últimos 6 caracteres del ID
       const numeroPedido = pedido.numero_pedido || pedido.id.slice(-6).toUpperCase();
+      console.log('🔵 PASO 3: Número de pedido:', numeroPedido);
 
-      // Formatear fecha sin caracteres especiales
+      // Formatear fecha
       const ahora = new Date(pedido.created_at);
       const dia = ahora.getDate().toString().padStart(2, '0');
       const mes = (ahora.getMonth() + 1).toString().padStart(2, '0');
@@ -206,7 +219,6 @@ export default function PedidosPage() {
       hora = hora % 12 || 12;
       const fechaFormateada = `${dia}/${mes}/${anio}, ${hora}:${minutos} ${ampm}`;
 
-      // Preparar datos para impresión
       const datosImpresion = {
         id: pedido.id,
         numero: numeroPedido,
@@ -223,17 +235,22 @@ export default function PedidosPage() {
         es_domicilio: pedido.es_domicilio,
         direccion: pedido.direccion_domicilio,
         valor_domicilio: pedido.valor_domicilio,
-        medio_pago: pedido.medio_pago  // 👈 AGREGADO
+        medio_pago: pedido.medio_pago
       };
 
-      // Enviar a imprimir
+      console.log('🔵 PASO 4: Datos preparados:', datosImpresion);
+      console.log('🔵 PASO 5: Enviando a http://localhost:3001/print');
+
       const response = await fetch('http://localhost:3001/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pedido: datosImpresion })
       });
 
+      console.log('🔵 PASO 6: Response status:', response.status);
+
       const resultado = await response.json();
+      console.log('🔵 PASO 7: Resultado:', resultado);
       
       if (resultado.success) {
         console.log('✅ Pedido impreso automáticamente');
@@ -242,7 +259,7 @@ export default function PedidosPage() {
       }
       
     } catch (error) {
-      console.error('⚠️ No se pudo imprimir (¿servidor apagado?):', error);
+      console.error('🔵 ERROR CATCH:', error);
     }
   };
 
