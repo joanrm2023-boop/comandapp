@@ -307,15 +307,6 @@ export default function MeseroPage() {
         .insert(detalles);
 
       if (errorDetalles) throw errorDetalles;
-
-      // Actualizar estado de mesa (SOLO si NO es domicilio)
-      if (!esDomicilio()) {
-        await supabase
-          .from('mesas')
-          .update({ estado: 'ocupada' })
-          .eq('id', mesaSeleccionada);
-      }
-
         
 
       const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
