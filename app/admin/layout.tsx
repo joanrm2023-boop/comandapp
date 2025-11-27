@@ -11,7 +11,8 @@ import {
   X,
   ChevronRight,
   LogOut,
-  Users 
+  Users,
+  ChefHat
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -21,37 +22,52 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState("Cargando...");
+  const [nombreNegocio, setNombreNegocio] = useState("DishHub");
+  const [logoNegocio, setLogoNegocio] = useState<string | null>(null);
 
   useEffect(() => {
-      cargarNombreUsuario();
-    }, []);
+    cargarDatos();
+  }, []);
 
-    const cargarNombreUsuario = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          const { data, error } = await supabase
-            .from('usuarios')
-            .select('nombre')
-            .eq('auth_user_id', user.id)
+  const cargarDatos = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Cargar datos del usuario
+        const { data: usuarioData, error: usuarioError } = await supabase
+          .from('usuarios')
+          .select('nombre, negocio_id')
+          .eq('auth_user_id', user.id)
+          .single();
+
+        if (usuarioData && !usuarioError) {
+          setNombreUsuario(usuarioData.nombre);
+
+          // Cargar datos del negocio
+          const { data: negocioData, error: negocioError } = await supabase
+            .from('negocios')
+            .select('nombre, logo_url')
+            .eq('id', usuarioData.negocio_id)
             .single();
 
-          if (data && !error) {
-            setNombreUsuario(data.nombre);
+          if (negocioData && !negocioError) {
+            setNombreNegocio(negocioData.nombre);
+            setLogoNegocio(negocioData.logo_url);
           }
         }
-      } catch (error) {
-        console.error('Error cargando nombre:', error);
-        setNombreUsuario("Admin");
       }
-    };
+    } catch (error) {
+      console.error('Error cargando datos:', error);
+      setNombreUsuario("Admin");
+      setNombreNegocio("DishHub");
+    }
+  };
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
-    // Eliminar cookie manualmente
     document.cookie = 'sb-access-token=; path=/; max-age=0';
-    window.location.href = '/login'; // 👈 Usa window.location
+    window.location.href = '/login';
   };
 
   const links = [
@@ -63,44 +79,56 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ];
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="flex min-h-screen bg-black">
       
       {/* Overlay móvil */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 bg-black/80 z-40 md:hidden backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Dark theme */}
       <aside className={`
         fixed md:static inset-y-0 left-0 z-50
-        flex flex-col w-72 bg-white border-r border-gray-200
+        flex flex-col w-72 bg-zinc-950 border-r border-zinc-800
         transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        shadow-xl md:shadow-none
+        shadow-2xl md:shadow-none
       `}>
         
-        {/* Header del sidebar */}
-        <div className="p-6 border-b border-gray-200">
+        {/* Header del sidebar con logo y nombre del negocio */}
+        <div className="p-6 border-b border-zinc-800">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-br from-purple-500 to-pink-600 p-2.5 rounded-xl shadow-lg">
-                <UtensilsCrossed className="w-6 h-6 text-white" />
-              </div>
+              {/* Logo del negocio */}
+              {logoNegocio ? (
+                <div className="w-12 h-12 rounded-2xl overflow-hidden bg-zinc-900 border-2 border-zinc-800 shadow-lg shadow-orange-500/20">
+                  <img 
+                    src={logoNegocio} 
+                    alt={nombreNegocio} 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/50">
+                  <ChefHat className="w-6 h-6 text-white" />
+                </div>
+              )}
+              
               <div>
-                <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  ComandasApp
+                <h2 className="text-xl font-black bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
+                  {nombreNegocio}
                 </h2>
-                <p className="text-xs text-gray-500">Panel Admin</p>
+                <p className="text-xs text-zinc-500">Panel Admin</p>
               </div>
             </div>
             <button 
               onClick={() => setSidebarOpen(false)}
-              className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="md:hidden p-2 hover:bg-zinc-900 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 text-gray-600" />
+              <X className="w-5 h-5 text-zinc-400" />
             </button>
           </div>
         </div>
@@ -120,19 +148,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   transition-all duration-200 relative overflow-hidden
                   ${
                     active
-                      ? "bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/30"
-                      : "text-gray-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 hover:text-purple-600"
+                      ? "bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/50"
+                      : "text-zinc-400 hover:bg-zinc-900 hover:text-orange-400 border border-transparent hover:border-zinc-800"
                   }
                 `}
               >
                 <div className="flex items-center gap-4 relative z-10">
                   <div className={`
                     p-2 rounded-lg transition-colors
-                    ${active ? "bg-white/20" : "bg-gray-100 group-hover:bg-white"}
+                    ${active ? "bg-white/20" : "bg-zinc-900 group-hover:bg-zinc-800"}
                   `}>
-                    <Icon className={`w-5 h-5 ${active ? "text-white" : "text-gray-700 group-hover:text-purple-600"}`} />
+                    <Icon className={`w-5 h-5 ${active ? "text-white" : "text-zinc-400 group-hover:text-orange-500"}`} />
                   </div>
-                  <span className="font-medium text-[15px]">{label}</span>
+                  <span className="font-semibold text-[15px]">{label}</span>
                 </div>
                 
                 {active && (
@@ -140,7 +168,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )}
                 
                 {!active && (
-                  <ChevronRight className="w-5 h-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <ChevronRight className="w-5 h-5 text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
               </Link>
             );
@@ -148,16 +176,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         {/* Footer del sidebar */}
-        <div className="p-4 border-t border-gray-200 space-y-3">
+        <div className="p-4 border-t border-zinc-800 space-y-3">
           {/* Info del usuario */}
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-100">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-semibold shadow-md">
-                A
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white font-bold shadow-lg shadow-orange-500/30">
+                {nombreUsuario.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">{nombreUsuario}</p>
-                <p className="text-xs text-gray-500 truncate">Administrador</p>
+                <p className="text-sm font-semibold text-white truncate">{nombreUsuario}</p>
+                <p className="text-xs text-zinc-500 truncate">Administrador</p>
               </div>
             </div>
           </div>
@@ -165,7 +193,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Botón cerrar sesión */}
           <button
             onClick={cerrarSesion}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-medium transition-colors border border-red-200"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-semibold transition-colors border border-red-500/20 hover:border-red-500/30"
           >
             <LogOut className="w-5 h-5" />
             Cerrar sesión
@@ -176,22 +204,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Contenido principal */}
       <div className="flex-1 flex flex-col min-h-screen">
         
-        {/* Header móvil */}
-        <header className="md:hidden bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-30 shadow-sm">
+        {/* Header móvil - Dark theme */}
+        <header className="md:hidden bg-zinc-950 border-b border-zinc-800 px-4 py-3 sticky top-0 z-30 shadow-xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-zinc-900 rounded-lg transition-colors"
               >
-                <Menu className="w-6 h-6 text-gray-700" />
+                <Menu className="w-6 h-6 text-zinc-400" />
               </button>
               <div className="flex items-center gap-2">
-                <div className="bg-gradient-to-br from-purple-500 to-pink-600 p-2 rounded-lg shadow-md">
-                  <UtensilsCrossed className="w-5 h-5 text-white" />
-                </div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  RestauApp
+                {logoNegocio ? (
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800">
+                    <img 
+                      src={logoNegocio} 
+                      alt={nombreNegocio} 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="bg-gradient-to-br from-orange-500 to-red-500 p-2 rounded-xl shadow-lg shadow-orange-500/50">
+                    <ChefHat className="w-5 h-5 text-white" />
+                  </div>
+                )}
+                <h1 className="text-lg font-black bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
+                  {nombreNegocio}
                 </h1>
               </div>
             </div>

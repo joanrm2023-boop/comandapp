@@ -75,6 +75,8 @@ export default function MeseroPage() {
   const [notasTemp, setNotasTemp] = useState("");
   const [direccionDomicilio, setDireccionDomicilio] = useState("");
   const [valorDomicilio, setValorDomicilio] = useState("");
+  const [nombreNegocio, setNombreNegocio] = useState("DishHub");
+  const [logoNegocio, setLogoNegocio] = useState<string | null>(null);
 
   useEffect(() => {
     cargarDatos();
@@ -84,16 +86,50 @@ export default function MeseroPage() {
     try {
       setLoading(true);
 
-      // Cargar categorías
+      // 🔥 NUEVO: Obtener negocio_id del usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setError('Usuario no autenticado');
+        return;
+      }
+
+      const { data: usuarioData, error: usuarioError } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (usuarioError || !usuarioData) {
+        setError('Usuario no encontrado en el sistema');
+        return;
+      }
+
+      const negocioId = usuarioData.negocio_id;
+
+      // 🔥 NUEVO: Obtener datos del negocio
+      const { data: negocioData } = await supabase
+        .from('negocios')
+        .select('nombre, logo_url')
+        .eq('id', negocioId)
+        .single();
+
+      if (negocioData) {
+        setNombreNegocio(negocioData.nombre);
+        setLogoNegocio(negocioData.logo_url);
+      }
+
+      // Cargar categorías DEL NEGOCIO
       const { data: categoriasData, error: errorCat } = await supabase
         .from('categorias')
         .select('*')
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('nombre');
 
       if (errorCat) throw errorCat;
 
-      // Cargar productos
+      // Cargar productos DEL NEGOCIO
       const { data: productosData, error: errorProd } = await supabase
         .from('productos')
         .select(`
@@ -110,15 +146,17 @@ export default function MeseroPage() {
           )
         `)
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('nombre');
 
       if (errorProd) throw errorProd;
 
-      // Cargar mesas
+      // Cargar mesas DEL NEGOCIO
       const { data: mesasData, error: errorMesas } = await supabase
         .from('mesas')
         .select('*')
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('numero');
 
       if (errorMesas) throw errorMesas;
@@ -286,7 +324,7 @@ export default function MeseroPage() {
       // 👇 BUSCAR EN TABLA USUARIOS
       const { data: usuarioData, error: usuarioError } = await supabase
         .from('usuarios')
-        .select('id, nombre, rol')
+        .select('id, nombre, rol, negocio_id') // 👈 Agregar negocio_id
         .eq('auth_user_id', user.id)
         .single();
 
@@ -304,7 +342,8 @@ export default function MeseroPage() {
         .from('pedidos')
         .insert([{
           mesa_id: mesaSeleccionada,
-          mesero_id: usuarioData.id,  // 👈 usuarios.id
+          mesero_id: usuarioData.id,
+          negocio_id: usuarioData.negocio_id, // 👈 AGREGAR ESTA LÍNEA
           estado: 'pendiente',
           total: totalFinal,
           es_domicilio: esDomicilio(),
@@ -380,11 +419,21 @@ export default function MeseroPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-yellow-400 to-blue-500 p-3 rounded-xl shadow-lg">
-              <span className="text-3xl">🧽</span>
-            </div>
+            {logoNegocio ? (
+              <div className="w-14 h-14 rounded-xl overflow-hidden bg-zinc-900 border-2 border-zinc-800 shadow-lg shadow-orange-500/20">
+                <img 
+                  src={logoNegocio} 
+                  alt={nombreNegocio}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-red-500 p-3 rounded-xl shadow-lg shadow-orange-500/50 flex items-center justify-center">
+                <span className="text-2xl">🍴</span>
+              </div>
+            )}
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-600 to-blue-600 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                 Nuevo Pedido
               </h1>
               <p className="text-gray-600 text-sm">Selecciona los productos</p>
@@ -394,7 +443,7 @@ export default function MeseroPage() {
           <div className="flex gap-3 items-center">
             <Button
               onClick={() => setMostrarResumen(!mostrarResumen)}
-              className="bg-gradient-to-r from-yellow-400 to-blue-500 hover:from-yellow-500 hover:to-blue-600 relative"
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg shadow-orange-500/50 relative"
             >
               <ShoppingCart className="w-5 h-5" />
               {pedido.length > 0 && (
@@ -518,193 +567,196 @@ export default function MeseroPage() {
       </div>
 
       {/* Panel Resumen Flotante */}
-        {mostrarResumen && pedido.length > 0 && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
-            onClick={() => setMostrarResumen(false)}
-          >
-            <Card className="w-full max-w-md max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-              <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white space-y-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-xl">Resumen del Pedido</CardTitle>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-white hover:bg-white/20"
-                    onClick={() => setMostrarResumen(false)}
-                  >
-                    <X className="w-5 h-5" />
-                  </Button>
+      {mostrarResumen && pedido.length > 0 && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setMostrarResumen(false)}
+        >
+          <Card className="w-full max-w-md max-h-[80vh] overflow-auto bg-zinc-900 border-2 border-zinc-800 shadow-2xl shadow-orange-500/30" onClick={(e) => e.stopPropagation()}>
+            {/* Header naranja extendido con selectores incluidos */}
+            <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white space-y-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl font-bold">Resumen del Pedido</CardTitle>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-white hover:bg-white/20"
+                  onClick={() => setMostrarResumen(false)}
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+              
+              {/* Selector de mesa dentro del header naranja */}
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
+                <label className="text-sm font-medium block mb-2 flex items-center gap-2">
+                  <span className="text-lg">🪑</span>
+                  Mesa para el pedido:
+                </label>
+                <Select value={mesaSeleccionada} onValueChange={setMesaSeleccionada}>
+                  <SelectTrigger className="w-full h-11 bg-white/95 text-gray-900 border-0 font-semibold shadow-lg hover:bg-white">
+                    <SelectValue placeholder="🪑 Seleccionar mesa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mesas.map((mesa) => ( 
+                      <SelectItem key={mesa.id} value={mesa.id} className="font-medium">
+                        🪑 {mesa.numero}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Campos para domicilio dentro del header naranja */}
+              {esDomicilio() && (
+                <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 space-y-3">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <span className="text-lg">🏠</span>
+                    <span>Pedido a domicilio</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Dirección de entrega
+                    </label>
+                    <Input
+                      placeholder="Ej: Calle 123 #45-67, Apto 301"
+                      value={direccionDomicilio}
+                      onChange={(e) => setDireccionDomicilio(e.target.value)}
+                      className="bg-white/95 text-gray-900 border-0 placeholder:text-gray-500"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Valor del domicilio
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder="Ej: 5000"
+                      value={valorDomicilio}
+                      onChange={(e) => setValorDomicilio(e.target.value)}
+                      className="bg-white/95 text-gray-900 border-0 placeholder:text-gray-500"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Selector de medio de pago dentro del header naranja */}
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
+                <label className="text-sm font-medium block mb-2 flex items-center gap-2">
+                  <span className="text-lg">💳</span>
+                  Medio de pago:
+                </label>
+                <Select value={medioPago} onValueChange={setMedioPago}>
+                  <SelectTrigger className="w-full h-11 bg-white/95 text-gray-900 border-0 font-semibold shadow-lg hover:bg-white">
+                    <SelectValue placeholder="💳 Seleccionar medio de pago..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="efectivo">💵 Efectivo</SelectItem>
+                    <SelectItem value="nequi">📱 Nequi</SelectItem>
+                    <SelectItem value="daviplata">📲 Daviplata</SelectItem>
+                    <SelectItem value="bold">💳 Bold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+
+            {/* Body oscuro con lista de productos */}
+            <CardContent className="p-4 space-y-3 bg-zinc-900">
+              {pedido.map((item) => (
+                <div key={item.producto.id} className="border-b border-zinc-700 pb-3 mb-3 last:border-0">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm text-white">{item.cantidad}x {item.producto.nombre}</p>
+                      <p className="text-xs text-zinc-400">${Number(item.producto.precio).toLocaleString()} c/u</p>
+                      {item.notas && (
+                        <p className="text-xs text-orange-400 mt-1 flex items-start gap-1">
+                          <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span className="italic">{item.notas}</span>
+                        </p>
+                      )}
+                    </div>
+                    <p className="font-bold text-orange-500 ml-2">
+                      ${(item.producto.precio * item.cantidad).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Sección de totales con fondo destacado */}
+              <div className="pt-3 border-t-2 border-orange-500/30 bg-zinc-800 rounded-lg p-3 space-y-2">
+                {/* Subtotal productos */}
+                <div className="flex justify-between items-center text-zinc-300">
+                  <span className="font-medium">Subtotal:</span>
+                  <span className="font-bold">
+                    ${calcularTotal().toLocaleString()}
+                  </span>
                 </div>
                 
-                {/* Selector de mesa */}
-                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
-                  <label className="text-sm font-medium block mb-2 flex items-center gap-2">
-                    <span className="text-lg">🪑</span>
-                    Mesa para el pedido:
-                  </label>
-                  <Select value={mesaSeleccionada} onValueChange={setMesaSeleccionada}>
-                    <SelectTrigger className="w-full h-11 bg-white text-gray-800 border-0 font-semibold shadow-md">
-                      <SelectValue placeholder="🪑 Seleccionar mesa..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {mesas.map((mesa) => ( 
-                        <SelectItem key={mesa.id} value={mesa.id} className="font-medium">
-                          🪑 {mesa.numero}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                {/* 🏠 CAMPOS PARA DOMICILIO */}
-                {esDomicilio() && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
-                    <div className="flex items-center gap-2 text-orange-800 font-semibold">
-                      <span className="text-lg">🏠</span>
-                      <span>Pedido a domicilio</span>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">
-                        Dirección de entrega
-                      </label>
-                      <Input
-                        placeholder="Ej: Calle 123 #45-67, Apto 301"
-                        value={direccionDomicilio}
-                        onChange={(e) => setDireccionDomicilio(e.target.value)}
-                        className="bg-white text-gray-800"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">
-                        Valor del domicilio
-                      </label>
-                      <Input
-                        type="number"
-                        placeholder="Ej: 5000"
-                        value={valorDomicilio}
-                        onChange={(e) => setValorDomicilio(e.target.value)}
-                        className="bg-white text-gray-800"
-                      />
-                    </div>
+                {/* Costo domicilio (solo si aplica) */}
+                {esDomicilio() && valorDomicilio && (
+                  <div className="flex justify-between items-center text-orange-400">
+                    <span className="font-medium">Domicilio:</span>
+                    <span className="font-bold">
+                      ${parseFloat(valorDomicilio).toLocaleString()}
+                    </span>
                   </div>
                 )}
                 
-              </CardHeader>
-              
-              {/* 💳 SELECTOR DE MEDIO DE PAGO */}
-                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
-                  <label className="text-sm font-medium block mb-2 flex items-center gap-2">
-                    <span className="text-lg">💳</span>
-                    Medio de pago:
-                  </label>
-                  <Select value={medioPago} onValueChange={setMedioPago}>
-                    <SelectTrigger className="w-full h-11 bg-white text-gray-800 border-0 font-semibold shadow-md">
-                      <SelectValue placeholder="💳 Seleccionar medio de pago..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="efectivo">💵 Efectivo</SelectItem>
-                      <SelectItem value="nequi">📱 Nequi</SelectItem>
-                      <SelectItem value="daviplata">📲 Daviplata</SelectItem>
-                      <SelectItem value="bold">💳 Bold</SelectItem>
-                    </SelectContent>
-                  </Select>
+                {/* Total final */}
+                <div className="flex justify-between items-center pt-2 border-t-2 border-zinc-700">
+                  <span className="text-lg font-bold text-white">TOTAL:</span>
+                  <span className="text-2xl font-bold text-orange-500">
+                    ${(calcularTotal() + (esDomicilio() && valorDomicilio ? parseFloat(valorDomicilio) : 0)).toLocaleString()}
+                  </span>
                 </div>
+              </div>
 
-              <CardContent className="p-4 space-y-3">
-                {pedido.map((item) => (
-                  <div key={item.producto.id} className="border-b pb-3 mb-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{item.cantidad}x {item.producto.nombre}</p>
-                        <p className="text-xs text-gray-500">${Number(item.producto.precio).toLocaleString()} c/u</p>
-                        {item.notas && (
-                          <p className="text-xs text-orange-600 mt-1 flex items-start gap-1">
-                            <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                            <span className="italic">{item.notas}</span>
-                          </p>
-                        )}
-                      </div>
-                      <p className="font-bold text-green-700 ml-2">
-                        ${(item.producto.precio * item.cantidad).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                
-                <div className="pt-3 border-t-2 border-gray-200 space-y-2">
-                  {/* Subtotal productos */}
-                  <div className="flex justify-between items-center text-gray-700">
-                    <span className="font-medium">Subtotal:</span>
-                    <span className="font-bold">
-                      ${calcularTotal().toLocaleString()}
-                    </span>
-                  </div>
-                  
-                  {/* Costo domicilio (solo si aplica) */}
-                  {esDomicilio() && valorDomicilio && (
-                    <div className="flex justify-between items-center text-orange-700">
-                      <span className="font-medium">Domicilio:</span>
-                      <span className="font-bold">
-                        ${parseFloat(valorDomicilio).toLocaleString()}
-                      </span>
-                    </div>
+              {/* Botones de acción */}
+              <div className="flex gap-2 pt-3">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                  onClick={() => {
+                    setPedido([]);
+                    setMesaSeleccionada("");
+                    setDireccionDomicilio("");
+                    setValorDomicilio("");
+                    setMostrarResumen(false);
+                    setMedioPago("");
+                  }}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg"
+                  onClick={enviarPedido}
+                  disabled={enviando || !mesaSeleccionada}
+                >
+                  {enviando ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Enviar
+                    </>
                   )}
-                  
-                  {/* Total final */}
-                  <div className="flex justify-between items-center pt-2 border-t-2 border-gray-300">
-                    <span className="text-lg font-bold">TOTAL:</span>
-                    <span className="text-2xl font-bold text-green-700">
-                      ${(calcularTotal() + (esDomicilio() && valorDomicilio ? parseFloat(valorDomicilio) : 0)).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setPedido([]);
-                      setMesaSeleccionada("");
-                      setDireccionDomicilio("");
-                      setValorDomicilio("");
-                      setMostrarResumen(false);
-                      setMedioPago("");
-                    }}
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    Cancelar
-                  </Button>
-                  <Button
-                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
-                    onClick={enviarPedido}
-                    disabled={enviando || !mesaSeleccionada}
-                  >
-                    {enviando ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Enviando...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Enviar
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Botón flotante del resumen */}
       {pedido.length > 0 && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto z-40">
           <Button
-            className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-blue-500 hover:from-yellow-500 hover:to-blue-600 shadow-2xl h-14 text-lg font-bold"
+            className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-2xl shadow-orange-500/50 h-14 text-lg font-bold"
             onClick={() => setMostrarResumen(true)}
           >
             <ShoppingCart className="w-5 h-5 mr-2" />

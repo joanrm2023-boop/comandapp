@@ -78,17 +78,41 @@ export default function MenuPage() {
   const cargarDatos = async () => {
     try {
       setLoading(true);
+
+      // NUEVO: Obtener negocio_id del usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
       
-      // Cargar categorías
+      if (!user) {
+        setError('Usuario no autenticado');
+        setLoading(false);
+        return;
+      }
+
+      const { data: usuarioData, error: usuarioError } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (usuarioError || !usuarioData) {
+        setError('Usuario no encontrado en el sistema');
+        setLoading(false);
+        return;
+      }
+
+      const negocioId = usuarioData.negocio_id;
+      
+      // Cargar categorías DEL NEGOCIO
       const { data: categoriasData, error: errorCat } = await supabase
         .from('categorias')
         .select('*')
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('nombre');
 
       if (errorCat) throw errorCat;
 
-      // Cargar productos con sus categorías
+      // Cargar productos DEL NEGOCIO con sus categorías
       const { data: productosData, error: errorProd } = await supabase
         .from('productos')
         .select(`
@@ -107,6 +131,7 @@ export default function MenuPage() {
           )
         `)
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('nombre');
 
       if (errorProd) throw errorProd;
@@ -124,10 +149,25 @@ export default function MenuPage() {
 
   const recargarCategorias = async () => {
     try {
+      // 🔥 Obtener negocio_id
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (!usuarioData) return;
+
+      const negocioId = usuarioData.negocio_id;
+
       const { data: categoriasData, error: errorCat } = await supabase
         .from('categorias')
         .select('*')
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('nombre');
 
       if (errorCat) throw errorCat;

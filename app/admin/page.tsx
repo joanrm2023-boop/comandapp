@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import SubirLogo from "@/components/ui/SubirLogo";
 import { 
   DollarSign, 
   ShoppingBag, 
@@ -43,6 +44,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [ultimaActualizacion, setUltimaActualizacion] = useState<Date>(new Date());
+  const [negocioId, setNegocioId] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     cargarDatos();
@@ -54,6 +57,32 @@ export default function DashboardPage() {
         setLoading(true);
       } else {
         setActualizando(true);
+      }
+
+      // 🔥 Obtener negocio_id del usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (!usuarioData) return;
+
+      const negocioId = usuarioData.negocio_id;
+      setNegocioId(negocioId); // 👈 GUARDAR EN STATE
+
+      // Obtener logo del negocio
+      const { data: negocioData } = await supabase
+        .from('negocios')
+        .select('logo_url')
+        .eq('id', negocioId)
+        .single();
+
+      if (negocioData?.logo_url) {
+        setLogoUrl(negocioData.logo_url);
       }
 
       // Fechas para hoy y ayer
@@ -69,40 +98,44 @@ export default function DashboardPage() {
       finAyer.setDate(finAyer.getDate() - 1);
       finAyer.setHours(23, 59, 59, 999);
 
-      // Cargar pedidos de hoy (entregados)
+      // Cargar pedidos de hoy (entregados) DEL NEGOCIO
       const { data: dataPedidosHoy, error: errorHoy } = await supabase
         .from('pedidos')
         .select('id, mesa_id, estado, total, created_at')
         .eq('estado', 'entregado')
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .gte('created_at', hoy.toISOString())
         .lte('created_at', finHoy.toISOString());
 
       if (errorHoy) throw errorHoy;
 
-      // Cargar pedidos de ayer (entregados)
+      // Cargar pedidos de ayer (entregados) DEL NEGOCIO
       const { data: dataPedidosAyer, error: errorAyer } = await supabase
         .from('pedidos')
         .select('id, mesa_id, estado, total, created_at')
         .eq('estado', 'entregado')
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .gte('created_at', ayer.toISOString())
         .lte('created_at', finAyer.toISOString());
 
       if (errorAyer) throw errorAyer;
 
-      // Cargar mesas
+      // Cargar mesas DEL NEGOCIO
       const { data: dataMesas, error: errorMesas } = await supabase
         .from('mesas')
         .select('*')
         .eq('activo', true)
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('numero');
 
       if (errorMesas) throw errorMesas;
 
-      // Cargar pedidos activos (no entregados ni cancelados)
+      // Cargar pedidos activos DEL NEGOCIO
       const { data: dataPedidosActivos, error: errorActivos } = await supabase
         .from('pedidos')
         .select('id, mesa_id, estado, total, created_at')
         .in('estado', ['pendiente', 'en_preparacion', 'listo'])
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .gte('created_at', hoy.toISOString());
 
       if (errorActivos) throw errorActivos;
@@ -386,7 +419,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Vista de mesas */}
-        <Card className="border-2 border-gray-200">
+        <Card className="mb-8 border-2 border-gray-200">
           <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Users className="w-5 h-5" />
@@ -440,6 +473,51 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 🔥 NUEVA SECCIÓN: Logo del Negocio */}
+        {negocioId && (
+          <Card className="border-2 border-orange-200">
+            <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <span className="text-2xl">🏢</span>
+                Configuración del Negocio
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* Logo actual (preview grande) */}
+                <div>
+                  <h3 className="font-semibold text-gray-700 mb-3">Logo Actual</h3>
+                  {logoUrl ? (
+                    <div className="w-48 h-48 border-2 border-gray-300 rounded-xl overflow-hidden bg-white shadow-lg">
+                      <img 
+                        src={logoUrl} 
+                        alt="Logo del negocio" 
+                        className="w-full h-full object-contain p-4"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-48 h-48 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <span className="text-4xl mb-2 block">🏢</span>
+                        <p className="text-sm text-gray-500">Sin logo</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Componente de subida */}
+                <div>
+                  <SubirLogo 
+                    negocioId={negocioId} 
+                    logoActual={logoUrl}
+                    onLogoActualizado={(newUrl) => setLogoUrl(newUrl)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

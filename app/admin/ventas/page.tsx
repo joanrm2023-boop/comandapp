@@ -86,8 +86,23 @@ export default function VentasPage() {
   const cargarVentas = async () => {
     try {
       setLoading(true);
+
+      // 🔥 Obtener negocio_id del usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (!usuarioData) return;
+
+      const negocioId = usuarioData.negocio_id;
       const { inicio, fin } = obtenerRangoFechas();
 
+      // Cargar ventas DEL NEGOCIO
       const { data, error } = await supabase
         .from('pedidos')
         .select(`
@@ -104,6 +119,7 @@ export default function VentasPage() {
           )
         `)
         .eq('estado', 'entregado')
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .gte('created_at', inicio.toISOString())
         .lte('created_at', fin.toISOString())
         .order('created_at', { ascending: false });

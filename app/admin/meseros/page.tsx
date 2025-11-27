@@ -57,10 +57,27 @@ export default function MeserosPage() {
   const cargarMeseros = async () => {
     try {
       setLoading(true);
+
+      // 🔥 Obtener negocio_id del usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (!usuarioData) return;
+
+      const negocioId = usuarioData.negocio_id;
+
+      // Cargar meseros DEL NEGOCIO
       const { data, error } = await supabase
         .from('usuarios')
         .select('*')
         .eq('rol', 'mesero')
+        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -143,12 +160,27 @@ export default function MeserosPage() {
           throw new Error('Este email ya está registrado');
         }
 
+        // 🔥 NUEVO: Obtener negocio_id del usuario actual
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Usuario no autenticado');
+
+        const { data: usuarioData } = await supabase
+          .from('usuarios')
+          .select('negocio_id')
+          .eq('auth_user_id', user.id)
+          .single();
+
+        if (!usuarioData) throw new Error('No se pudo obtener el negocio');
+
+        const negocioId = usuarioData.negocio_id;
+
         // 2. Llamar a la función SQL para crear el usuario completo
         const { data: resultado, error: funcionError } = await supabase
           .rpc('crear_usuario_mesero', {
             p_email: email.trim(),
-            p_password: '123456', // 👈 Contraseña genérica
-            p_nombre: nombre.trim()
+            p_password: '123456',
+            p_nombre: nombre.trim(),
+            p_negocio_id: negocioId // 👈 AGREGAR NEGOCIO_ID
           });
 
         console.log('📊 Resultado de crear_usuario_mesero:', resultado);

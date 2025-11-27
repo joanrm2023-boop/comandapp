@@ -92,40 +92,79 @@ export default function PedidosPage() {
     
     cargarPedidos();
     
-    // Escuchar nuevos pedidos e imprimir automáticamente
-    const subscription = supabase
-      .channel('pedidos-channel')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'pedidos' },
-        (payload) => {
-          console.log('🟢 EVENTO REALTIME RECIBIDO');
-          console.log('🟢 Payload completo:', payload);
-          console.log('🟢 Nuevo pedido:', payload.new);
-          console.log('🟢 ID del pedido:', payload.new.id);
-          
-          cargarPedidos();
-          
-          // 🖨️ IMPRIMIR AUTOMÁTICAMENTE
-          console.log('🟢 Llamando a imprimirPedidoAutomatico con ID:', payload.new.id);
-          imprimirPedidoAutomatico(payload.new.id);
-        }
-      )
-      .subscribe((status) => {
-        console.log('🟢 Estado de suscripción Realtime:', status);
-      });
+    // Obtener negocio_id para filtrar Realtime
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    return () => {
-      console.log('🟢 LIMPIANDO: Cerrando suscripción Realtime');
-      subscription.unsubscribe();
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (!usuarioData) return;
+
+      const negocioId = usuarioData.negocio_id;
+
+      // Escuchar nuevos pedidos DEL NEGOCIO
+      const subscription = supabase
+        .channel('pedidos-channel')
+        .on('postgres_changes', 
+          { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'pedidos',
+            filter: `negocio_id=eq.${negocioId}` // 👈 FILTRO POR NEGOCIO
+          },
+          (payload) => {
+            console.log('🟢 Nuevo pedido del negocio:', payload.new);
+            cargarPedidos();
+            imprimirPedidoAutomatico(payload.new.id);
+          }
+        )
+        .subscribe((status) => {
+          console.log('🟢 Estado de suscripción Realtime:', status);
+        });
+
+      return () => {
+        console.log('🟢 LIMPIANDO: Cerrando suscripción Realtime');
+        subscription.unsubscribe();
+      };
     };
+
+    setupRealtime();
   }, [filtroFecha, fechaInicio, fechaFin]);
 
   const cargarPedidos = async () => {
     try {
       setLoading(true);
 
-      const { inicio, fin } = obtenerRangoFechas(); // 👈 AGREGAR ESTA LÍNEA
+      // Obtener usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
+      // Obtener negocio_id
+      const { data: usuarioData, error: usuarioError } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (usuarioError || !usuarioData) {
+        console.error('Error obteniendo usuario');
+        setLoading(false);
+        return;
+      }
+
+      const negocioId = usuarioData.negocio_id;
+      const { inicio, fin } = obtenerRangoFechas();
+
+      // Cargar pedidos del negocio
       const { data, error } = await supabase
         .from('pedidos')
         .select(`
@@ -139,8 +178,9 @@ export default function PedidosPage() {
             productos (nombre, precio)
           )
         `)
-        .gte('created_at', inicio.toISOString())  // 👈 AGREGAR FILTRO
-        .lte('created_at', fin.toISOString())     // 👈 AGREGAR FILTRO
+        .eq('negocio_id', negocioId)
+        .gte('created_at', inicio.toISOString())
+        .lte('created_at', fin.toISOString())
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -187,6 +227,7 @@ export default function PedidosPage() {
         .from('pedidos')
         .select(`
           *,
+          negocio_id,
           mesas (numero),
           usuarios (nombre),
           detalle_pedidos (
@@ -205,6 +246,21 @@ export default function PedidosPage() {
         return;
       }
 
+      //   Obtener datos del negocio
+      const { data: negocioData } = await supabase
+        .from('negocios')
+        .select('nombre, telefono, direccion')
+        .eq('id', pedido.negocio_id)
+        .single();
+
+      console.log('🔵 PASO 2.5: Datos del negocio:', negocioData);
+
+      if (error || !pedido) {
+        console.error('❌ Error obteniendo pedido:', error);
+        return;
+      }
+
+      
       const numeroPedido = pedido.numero_pedido || pedido.id.slice(-6).toUpperCase();
       console.log('🔵 PASO 3: Número de pedido:', numeroPedido);
 
@@ -244,7 +300,14 @@ export default function PedidosPage() {
       const response = await fetch('http://localhost:3001/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedido: datosImpresion })
+        body: JSON.stringify({ 
+          pedido: datosImpresion,
+          negocio: {
+            nombre: negocioData?.nombre || 'DishHub',
+            telefono: negocioData?.telefono || null,
+            direccion: negocioData?.direccion || null
+          }
+        })
       });
 
       console.log('🔵 PASO 6: Response status:', response.status);
