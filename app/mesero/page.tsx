@@ -65,6 +65,7 @@ export default function MeseroPage() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [medioPago, setMedioPago] = useState<string>("");
+  const [nombreCliente, setNombreCliente] = useState<string>(""); // 🆕 NOMBRE CLIENTE
   
   // Carrito de pedido
   const [pedido, setPedido] = useState<ItemPedido[]>([]);
@@ -86,7 +87,7 @@ export default function MeseroPage() {
     try {
       setLoading(true);
 
-      // 🔥 NUEVO: Obtener negocio_id del usuario actual
+      // Obtener negocio_id del usuario actual
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -107,7 +108,7 @@ export default function MeseroPage() {
 
       const negocioId = usuarioData.negocio_id;
 
-      // 🔥 NUEVO: Obtener datos del negocio
+      // Obtener datos del negocio
       const { data: negocioData } = await supabase
         .from('negocios')
         .select('nombre, logo_url')
@@ -124,7 +125,7 @@ export default function MeseroPage() {
         .from('categorias')
         .select('*')
         .eq('activo', true)
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('nombre');
 
       if (errorCat) throw errorCat;
@@ -146,7 +147,7 @@ export default function MeseroPage() {
           )
         `)
         .eq('activo', true)
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('nombre');
 
       if (errorProd) throw errorProd;
@@ -156,7 +157,7 @@ export default function MeseroPage() {
         .from('mesas')
         .select('*')
         .eq('activo', true)
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('numero');
 
       if (errorMesas) throw errorMesas;
@@ -293,6 +294,12 @@ export default function MeseroPage() {
       return;
     }
 
+    // 🆕 Validar nombre del cliente
+    if (!nombreCliente.trim()) {
+      toast.error('Por favor ingresa el nombre del cliente');
+      return;
+    }
+
     if (esDomicilio()) {
       if (!direccionDomicilio.trim()) {
         toast.error('Por favor ingresa la dirección de entrega');
@@ -311,7 +318,7 @@ export default function MeseroPage() {
       const costoEnvio = esDomicilio() ? parseFloat(valorDomicilio || '0') : 0;
       const totalFinal = totalProductos + costoEnvio;
 
-      // 👇 OBTENER USUARIO AUTENTICADO
+      // Obtener usuario autenticado
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user) {
@@ -321,10 +328,10 @@ export default function MeseroPage() {
         return;
       }
 
-      // 👇 BUSCAR EN TABLA USUARIOS
+      // Buscar en tabla usuarios
       const { data: usuarioData, error: usuarioError } = await supabase
         .from('usuarios')
-        .select('id, nombre, rol, negocio_id') // 👈 Agregar negocio_id
+        .select('id, nombre, rol, negocio_id')
         .eq('auth_user_id', user.id)
         .single();
 
@@ -337,24 +344,104 @@ export default function MeseroPage() {
 
       console.log('👤 Mesero:', usuarioData.nombre, '- Rol:', usuarioData.rol);
 
-      // Crear pedido CON mesero_id de la tabla usuarios
+      // 🆕 CREAR O BUSCAR CLIENTE
+      let clienteId: string | null = null;
+
+      console.log('🔍 Buscando cliente:', nombreCliente.trim(), 'en negocio:', usuarioData.negocio_id);
+
+      // Buscar si el cliente ya existe (por nombre y negocio)
+      const { data: clienteExistente, error: errorBusqueda } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('nombre', nombreCliente.trim())
+        .eq('negocio_id', usuarioData.negocio_id)
+        .maybeSingle(); // 👈 Usar maybeSingle() en lugar de single()
+
+      if (errorBusqueda) {
+        console.error('❌ Error buscando cliente:', errorBusqueda);
+        toast.error('Error al buscar cliente: ' + errorBusqueda.message);
+        setEnviando(false);
+        return;
+      }
+
+      if (clienteExistente) {
+        // Cliente ya existe
+        clienteId = clienteExistente.id;
+        console.log('✅ Cliente existente:', clienteId);
+      } else {
+        // Crear nuevo cliente
+        console.log('➕ Creando nuevo cliente...');
+        const { data: nuevoCliente, error: errorCliente } = await supabase
+          .from('clientes')
+          .insert([{
+            nombre: nombreCliente.trim(),
+            negocio_id: usuarioData.negocio_id
+          }])
+          .select()
+          .single();
+
+        if (errorCliente) {
+          console.error('❌ Error creando cliente:', errorCliente);
+          toast.error('Error al registrar el cliente: ' + errorCliente.message);
+          setEnviando(false);
+          return;
+        }
+
+        if (!nuevoCliente) {
+          console.error('❌ No se retornó datos del cliente creado');
+          toast.error('Error: No se pudo crear el cliente');
+          setEnviando(false);
+          return;
+        }
+
+        clienteId = nuevoCliente.id;
+        console.log('✅ Nuevo cliente creado con ID:', clienteId);
+      }
+
+      // Crear pedido CON cliente_id
+      const datosAPedir = {
+        mesa_id: mesaSeleccionada,
+        mesero_id: usuarioData.id,
+        negocio_id: usuarioData.negocio_id,
+        cliente_id: clienteId,
+        estado: 'vendido', // 🔥 CAMBIAR A 'vendido' (ya no usamos 'pendiente')
+        total: totalFinal,
+        es_domicilio: esDomicilio(),
+        direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
+        valor_domicilio: costoEnvio,
+        medio_pago: medioPago
+      };
+
+      console.log('📝 Creando pedido con datos:', datosAPedir);
+      console.log('📝 Tipos de datos:', {
+        mesa_id: typeof mesaSeleccionada,
+        mesero_id: typeof usuarioData.id,
+        negocio_id: typeof usuarioData.negocio_id,
+        cliente_id: typeof clienteId,
+        total: typeof totalFinal,
+        valor_domicilio: typeof costoEnvio
+      });
+
       const { data: pedidoData, error: errorPedido } = await supabase
         .from('pedidos')
-        .insert([{
-          mesa_id: mesaSeleccionada,
-          mesero_id: usuarioData.id,
-          negocio_id: usuarioData.negocio_id, // 👈 AGREGAR ESTA LÍNEA
-          estado: 'pendiente',
-          total: totalFinal,
-          es_domicilio: esDomicilio(),
-          direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
-          valor_domicilio: costoEnvio,
-          medio_pago: medioPago
-        }])
+        .insert([datosAPedir])
         .select()
         .single();
 
-      if (errorPedido) throw errorPedido;
+      if (errorPedido) {
+        console.error('❌ Error creando pedido:', errorPedido);
+        console.error('❌ Error completo:', JSON.stringify(errorPedido, null, 2));
+        toast.error('Error al crear pedido: ' + (errorPedido.message || JSON.stringify(errorPedido)));
+        throw errorPedido;
+      }
+
+      if (!pedidoData) {
+        console.error('❌ No se retornó datos del pedido');
+        toast.error('Error: No se pudo crear el pedido');
+        throw new Error('No se retornó datos del pedido');
+      }
+
+      console.log('✅ Pedido creado con ID:', pedidoData.id);
 
       // Crear detalles del pedido
       const detalles = pedido.map(item => ({
@@ -366,11 +453,19 @@ export default function MeseroPage() {
         notas: item.notas || null
       }));
 
+      console.log('📦 Insertando detalles del pedido:', detalles.length, 'items');
+
       const { error: errorDetalles } = await supabase
         .from('detalle_pedidos')
         .insert(detalles);
 
-      if (errorDetalles) throw errorDetalles;
+      if (errorDetalles) {
+        console.error('❌ Error creando detalles:', errorDetalles);
+        toast.error('Error al crear detalles del pedido: ' + errorDetalles.message);
+        throw errorDetalles;
+      }
+
+      console.log('✅ Detalles del pedido creados exitosamente');
 
       const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
 
@@ -381,10 +476,11 @@ export default function MeseroPage() {
       setValorDomicilio("");
       setMostrarResumen(false);
       setMedioPago("");
+      setNombreCliente(""); // 🆕 LIMPIAR NOMBRE CLIENTE
 
       // Mostrar notificación
       toast.success('¡Pedido enviado exitosamente! 🎉', {
-        description: `Mesa ${mesaNumero} - Total: $${totalFinal.toLocaleString()}`,
+        description: `Mesa ${mesaNumero} - ${nombreCliente} - Total: $${totalFinal.toLocaleString()}`,
         duration: 5000,
         style: {
           fontSize: '18px',
@@ -394,9 +490,19 @@ export default function MeseroPage() {
           boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)'
         }
       });
-    } catch (err) {
-      console.error('Error enviando pedido:', err);
-      toast.error('Error al enviar el pedido');
+    } catch (err: any) {
+      console.error('❌ Error enviando pedido:', err);
+      console.error('❌ Detalles completos del error:', {
+        message: err?.message,
+        code: err?.code,
+        details: err?.details,
+        hint: err?.hint
+      });
+      
+      const mensajeError = err?.message || 'Error desconocido al enviar el pedido';
+      toast.error('Error: ' + mensajeError, {
+        duration: 5000
+      });
     } finally {
       setEnviando(false);
     }
@@ -659,6 +765,20 @@ export default function MeseroPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* 🆕 Campo de nombre del cliente dentro del header naranja */}
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
+                <label className="text-sm font-medium block mb-2 flex items-center gap-2">
+                  <span className="text-lg">👤</span>
+                  Nombre del cliente:
+                </label>
+                <Input
+                  placeholder="Ej: Juan Pérez"
+                  value={nombreCliente}
+                  onChange={(e) => setNombreCliente(e.target.value)}
+                  className="w-full h-11 bg-white/95 text-gray-900 border-0 font-semibold shadow-lg hover:bg-white placeholder:text-gray-500"
+                />
+              </div>
             </CardHeader>
 
             {/* Body oscuro con lista de productos */}
@@ -724,6 +844,7 @@ export default function MeseroPage() {
                     setValorDomicilio("");
                     setMostrarResumen(false);
                     setMedioPago("");
+                    setNombreCliente(""); // 🆕 LIMPIAR NOMBRE CLIENTE
                   }}
                 >
                   <X className="w-4 h-4 mr-2" />

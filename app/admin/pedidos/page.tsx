@@ -3,9 +3,20 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Clock, Loader2, Home, ShoppingBag, UtensilsCrossed } from "lucide-react";
+import { Clock, Loader2, Home, ShoppingBag, UtensilsCrossed, X, Printer, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Tipos
 interface Pedido {
@@ -13,14 +24,20 @@ interface Pedido {
   numero_pedido: number | null;
   mesa_id: string;
   total: number;
+  estado: string;
   es_domicilio: boolean;              
   direccion_domicilio: string | null; 
-  valor_domicilio: number;  
+  valor_domicilio: number;
+  medio_pago: string;
+  cliente_id: string | null;
   created_at: string;
   mesas: {
     numero: string;
   };
   usuarios: {
+    nombre: string;
+  } | null;
+  clientes: {
     nombre: string;
   } | null;
   detalle_pedidos: Array<{
@@ -41,6 +58,9 @@ export default function PedidosPage() {
   const [filtroFecha, setFiltroFecha] = useState("hoy");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
+  const [busqueda, setBusqueda] = useState("");
+  const [pedidoACancelar, setPedidoACancelar] = useState<string | null>(null);
+  const [cancelando, setCancelando] = useState(false);
 
   const obtenerRangoFechas = () => {
     const ahora = new Date();
@@ -115,7 +135,7 @@ export default function PedidosPage() {
             event: 'INSERT', 
             schema: 'public', 
             table: 'pedidos',
-            filter: `negocio_id=eq.${negocioId}` // 👈 FILTRO POR NEGOCIO
+            filter: `negocio_id=eq.${negocioId}`
           },
           (payload) => {
             console.log('🟢 Nuevo pedido del negocio:', payload.new);
@@ -164,13 +184,14 @@ export default function PedidosPage() {
       const negocioId = usuarioData.negocio_id;
       const { inicio, fin } = obtenerRangoFechas();
 
-      // Cargar pedidos del negocio
+      // Cargar pedidos del negocio CON CLIENTE
       const { data, error } = await supabase
         .from('pedidos')
         .select(`
           *,
           mesas (numero),
           usuarios (nombre),
+          clientes (nombre),
           detalle_pedidos (
             id,
             cantidad,
@@ -203,26 +224,78 @@ export default function PedidosPage() {
     return 'mesa';
   };
 
-  // Filtrar pedidos según el tipo seleccionado
+  // Filtrar pedidos según el tipo seleccionado Y búsqueda
   const pedidosFiltrados = pedidos.filter(pedido => {
-    if (filtroTipo === 'todos') return true;
-    
-    const tipo = getTipoPedido(pedido);
-    
-    if (filtroTipo === 'mesas') return tipo === 'mesa';
-    if (filtroTipo === 'domicilio') return tipo === 'domicilio';
-    if (filtroTipo === 'para_llevar') return tipo === 'para_llevar';
-    
+    // Filtro por tipo
+    if (filtroTipo !== 'todos') {
+      const tipo = getTipoPedido(pedido);
+      
+      if (filtroTipo === 'mesas' && tipo !== 'mesa') return false;
+      if (filtroTipo === 'domicilio' && tipo !== 'domicilio') return false;
+      if (filtroTipo === 'para_llevar' && tipo !== 'para_llevar') return false;
+    }
+
+    // Filtro por búsqueda
+    if (busqueda.trim()) {
+      const searchLower = busqueda.toLowerCase();
+      const numeroPedido = pedido.numero_pedido?.toString() || pedido.id.slice(-6);
+      const nombreCliente = pedido.clientes?.nombre?.toLowerCase() || '';
+      const nombreMesero = pedido.usuarios?.nombre?.toLowerCase() || '';
+      const mesaNumero = pedido.mesas.numero.toLowerCase();
+
+      return (
+        numeroPedido.includes(searchLower) ||
+        nombreCliente.includes(searchLower) ||
+        nombreMesero.includes(searchLower) ||
+        mesaNumero.includes(searchLower)
+      );
+    }
+
     return true;
   });
  
+  // 🆕 Función para cancelar pedido
+  const cancelarPedido = async (pedidoId: string) => {
+    try {
+      setCancelando(true);
+
+      const { error } = await supabase
+        .from('pedidos')
+        .update({ estado: 'cancelado' })
+        .eq('id', pedidoId);
+
+      if (error) throw error;
+
+      console.log('✅ Pedido cancelado exitosamente');
+      await cargarPedidos();
+      setPedidoACancelar(null);
+      
+    } catch (error) {
+      console.error('❌ Error cancelando pedido:', error);
+      alert('Error al cancelar el pedido');
+    } finally {
+      setCancelando(false);
+    }
+  };
+
+  // 🆕 Función para reimprimir pedido
+  const reimprimirPedido = async (pedidoId: string) => {
+    try {
+      console.log('🔁 Reimprimiendo pedido:', pedidoId);
+      await imprimirPedidoAutomatico(pedidoId);
+    } catch (error) {
+      console.error('❌ Error reimprimiendo:', error);
+      alert('Error al reimprimir el pedido');
+    }
+  };
+
   // Función para imprimir automáticamente
   const imprimirPedidoAutomatico = async (pedidoId: string) => {
     try {
       console.log('🔵 PASO 1: imprimirPedidoAutomatico ejecutándose');
       console.log('🔵 pedidoId:', pedidoId);
       
-      // Obtener datos completos del pedido
+      // Obtener datos completos del pedido CON CLIENTE
       const { data: pedido, error } = await supabase
         .from('pedidos')
         .select(`
@@ -230,6 +303,7 @@ export default function PedidosPage() {
           negocio_id,
           mesas (numero),
           usuarios (nombre),
+          clientes (nombre),
           detalle_pedidos (
             cantidad,
             notas,
@@ -246,7 +320,7 @@ export default function PedidosPage() {
         return;
       }
 
-      //   Obtener datos del negocio
+      // Obtener datos del negocio
       const { data: negocioData } = await supabase
         .from('negocios')
         .select('nombre, telefono, direccion')
@@ -260,7 +334,6 @@ export default function PedidosPage() {
         return;
       }
 
-      
       const numeroPedido = pedido.numero_pedido || pedido.id.slice(-6).toUpperCase();
       console.log('🔵 PASO 3: Número de pedido:', numeroPedido);
 
@@ -280,6 +353,7 @@ export default function PedidosPage() {
         numero: numeroPedido,
         mesa: pedido.mesas?.numero || 'N/A',
         mesero: pedido.usuarios?.nombre || 'N/A',
+        cliente: pedido.clientes?.nombre || 'N/A', // 🆕 NOMBRE DEL CLIENTE
         fecha: fechaFormateada,
         items: pedido.detalle_pedidos.map((d: any) => ({
           cantidad: d.cantidad,
@@ -317,6 +391,19 @@ export default function PedidosPage() {
       
       if (resultado.success) {
         console.log('✅ Pedido impreso automáticamente');
+        
+        // 🆕 CAMBIAR ESTADO A 'VENDIDO' DESPUÉS DE IMPRIMIR EXITOSAMENTE
+        const { error: updateError } = await supabase
+          .from('pedidos')
+          .update({ estado: 'vendido' })
+          .eq('id', pedidoId);
+
+        if (updateError) {
+          console.error('⚠️ Error actualizando estado a vendido:', updateError);
+        } else {
+          console.log('✅ Estado cambiado a VENDIDO');
+          await cargarPedidos(); // Recargar pedidos para reflejar el cambio
+        }
       } else {
         console.error('⚠️ Error al imprimir:', resultado.error);
       }
@@ -341,10 +428,10 @@ export default function PedidosPage() {
       return <Home className="w-6 h-6 text-orange-600" />;
     }
     if (tipo === 'para_llevar') {
-      return <ShoppingBag className="w-6 h-6 text-blue-600" />;
+      return <ShoppingBag className="w-6 h-6 text-zinc-700" />;
     }
     return (
-      <span className="text-2xl font-bold text-purple-600">
+      <span className="text-2xl font-bold text-orange-600">
         {pedido.mesas.numero}
       </span>
     );
@@ -355,8 +442,8 @@ export default function PedidosPage() {
     const tipo = getTipoPedido(pedido);
     
     if (tipo === 'domicilio') return 'from-orange-100 to-orange-200';
-    if (tipo === 'para_llevar') return 'from-blue-100 to-blue-200';
-    return 'from-purple-100 to-pink-100';
+    if (tipo === 'para_llevar') return 'from-zinc-100 to-zinc-200';
+    return 'from-orange-50 to-red-50';
   };
 
   // Obtener título según el tipo
@@ -371,41 +458,71 @@ export default function PedidosPage() {
   // Obtener número de pedido para mostrar
   const getNumeroPedido = (pedido: Pedido) => {
     if (pedido.numero_pedido) return `#${pedido.numero_pedido}`;
-    // Si no tiene número, usar últimos 6 caracteres del ID
     return `#${pedido.id.slice(-6).toUpperCase()}`;
+  };
+
+  // Obtener badge de estado
+  const getBadgeEstado = (estado: string) => {
+    if (estado === 'cancelado') {
+      return (
+        <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+          ❌ CANCELADO
+        </div>
+      );
+    }
+    if (estado === 'vendido') {
+      return (
+        <div className="absolute top-3 left-3 bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+          ✅ VENDIDO
+        </div>
+      );
+    }
+    return null;
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-purple-600" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-orange-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
               Pedidos Recientes
             </h1>
-            <p className="text-gray-600 text-sm mt-1">
+            <p className="text-zinc-600 text-sm mt-1">
               {pedidosFiltrados.length} {pedidosFiltrados.length === 1 ? 'pedido' : 'pedidos'}
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            {/* 🔍 Barra de búsqueda */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <Input
+                type="text"
+                placeholder="Buscar pedido, cliente, mesero..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="pl-10 border-zinc-300 focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+
             {/* 📅 FILTROS DE FECHA */}
-            <div className="bg-white rounded-xl shadow-md p-3 border border-gray-200 w-full sm:w-auto">
+            <div className="bg-white rounded-xl shadow-md p-3 border-2 border-zinc-200 w-full sm:w-auto">
               <div className="flex flex-wrap gap-2 mb-3">
                 <Button
                   size="sm"
                   variant={filtroFecha === "hoy" ? "default" : "outline"}
                   onClick={() => setFiltroFecha("hoy")}
-                  className={filtroFecha === "hoy" ? "bg-gradient-to-r from-purple-500 to-pink-600" : ""}
+                  className={filtroFecha === "hoy" ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600" : "border-zinc-300 hover:bg-zinc-50"}
                 >
                   📅 Hoy
                 </Button>
@@ -413,7 +530,7 @@ export default function PedidosPage() {
                   size="sm"
                   variant={filtroFecha === "ayer" ? "default" : "outline"}
                   onClick={() => setFiltroFecha("ayer")}
-                  className={filtroFecha === "ayer" ? "bg-gradient-to-r from-purple-500 to-pink-600" : ""}
+                  className={filtroFecha === "ayer" ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600" : "border-zinc-300 hover:bg-zinc-50"}
                 >
                   📆 Ayer
                 </Button>
@@ -421,7 +538,7 @@ export default function PedidosPage() {
                   size="sm"
                   variant={filtroFecha === "semana" ? "default" : "outline"}
                   onClick={() => setFiltroFecha("semana")}
-                  className={filtroFecha === "semana" ? "bg-gradient-to-r from-purple-500 to-pink-600" : ""}
+                  className={filtroFecha === "semana" ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600" : "border-zinc-300 hover:bg-zinc-50"}
                 >
                   📊 Semana
                 </Button>
@@ -429,7 +546,7 @@ export default function PedidosPage() {
                   size="sm"
                   variant={filtroFecha === "mes" ? "default" : "outline"}
                   onClick={() => setFiltroFecha("mes")}
-                  className={filtroFecha === "mes" ? "bg-gradient-to-r from-purple-500 to-pink-600" : ""}
+                  className={filtroFecha === "mes" ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600" : "border-zinc-300 hover:bg-zinc-50"}
                 >
                   📈 Mes
                 </Button>
@@ -437,7 +554,7 @@ export default function PedidosPage() {
                   size="sm"
                   variant={filtroFecha === "personalizado" ? "default" : "outline"}
                   onClick={() => setFiltroFecha("personalizado")}
-                  className={filtroFecha === "personalizado" ? "bg-gradient-to-r from-purple-500 to-pink-600" : ""}
+                  className={filtroFecha === "personalizado" ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600" : "border-zinc-300 hover:bg-zinc-50"}
                 >
                   🗓️ Rango
                 </Button>
@@ -445,7 +562,7 @@ export default function PedidosPage() {
                   size="sm"
                   variant={filtroFecha === "todos" ? "default" : "outline"}
                   onClick={() => setFiltroFecha("todos")}
-                  className={filtroFecha === "todos" ? "bg-gradient-to-r from-purple-500 to-pink-600" : ""}
+                  className={filtroFecha === "todos" ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600" : "border-zinc-300 hover:bg-zinc-50"}
                 >
                   📋 Todos
                 </Button>
@@ -453,36 +570,36 @@ export default function PedidosPage() {
 
               {/* Selector de rango personalizado */}
               {filtroFecha === "personalizado" && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-zinc-700 mb-1">
                       Inicio
                     </label>
                     <input
                       type="date"
                       value={fechaInicio}
                       onChange={(e) => setFechaInicio(e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-2 py-1 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-zinc-700 mb-1">
                       Fin
                     </label>
                     <input
                       type="date"
                       value={fechaFin}
                       onChange={(e) => setFechaFin(e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-2 py-1 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Filtro por tipo (mantener el Select existente) */}
+            {/* Filtro por tipo */}
             <Select value={filtroTipo} onValueChange={setFiltroTipo}>
-              <SelectTrigger className="w-full sm:w-56 h-12 border-gray-200 focus:ring-2 focus:ring-purple-500">
+              <SelectTrigger className="w-full sm:w-56 h-12 border-zinc-300 focus:ring-2 focus:ring-orange-500">
                 <SelectValue placeholder="Filtrar por tipo" />
               </SelectTrigger>
               <SelectContent>
@@ -494,7 +611,7 @@ export default function PedidosPage() {
                 </SelectItem>
                 <SelectItem value="mesas">
                   <div className="flex items-center gap-2">
-                    <span className="text-purple-600">🪑</span>
+                    <span className="text-orange-600">🪑</span>
                     <span>Mesas</span>
                   </div>
                 </SelectItem>
@@ -506,15 +623,15 @@ export default function PedidosPage() {
                 </SelectItem>
                 <SelectItem value="para_llevar">
                   <div className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-blue-600" />
+                    <ShoppingBag className="w-4 h-4 text-zinc-700" />
                     <span>Para Llevar</span>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
 
-            <div className="bg-green-100 border border-green-300 rounded-lg px-4 py-2">
-              <p className="text-green-800 text-sm font-semibold whitespace-nowrap">
+            <div className="bg-orange-50 border border-orange-300 rounded-lg px-4 py-2">
+              <p className="text-orange-800 text-sm font-semibold whitespace-nowrap">
                 🖨️ Impresión activa
               </p>
             </div>
@@ -525,9 +642,12 @@ export default function PedidosPage() {
         {pedidosFiltrados.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {pedidosFiltrados.map((pedido) => (
-              <Card key={pedido.id} className="hover:shadow-xl transition-all duration-300 border-2 relative">
+              <Card key={pedido.id} className="hover:shadow-xl hover:shadow-orange-500/20 transition-all duration-300 border-2 border-zinc-200 relative">
+                {/* Badge de estado */}
+                {getBadgeEstado(pedido.estado)}
+
                 {/* Número de pedido en esquina */}
-                <div className="absolute top-3 right-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-1 rounded-full text-xs font-bold">
+                <div className="absolute top-3 right-3 bg-gradient-to-r from-orange-500 to-red-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
                   {getNumeroPedido(pedido)}
                 </div>
 
@@ -535,14 +655,14 @@ export default function PedidosPage() {
                   {/* Header del pedido */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className={`bg-gradient-to-br ${getColorFondo(pedido)} p-3 rounded-xl`}>
+                      <div className={`bg-gradient-to-br ${getColorFondo(pedido)} p-3 rounded-xl border border-zinc-200`}>
                         {getIconoTipo(pedido)}
                       </div>
                       <div>
-                        <h3 className="font-bold text-lg">
+                        <h3 className="font-bold text-lg text-zinc-900">
                           {getTitulo(pedido)}
                         </h3>
-                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <div className="flex items-center gap-2 text-sm text-zinc-500">
                           <Clock className="w-3 h-3" />
                           {formatearHora(pedido.created_at)}
                         </div>
@@ -553,7 +673,7 @@ export default function PedidosPage() {
                   {/* Info domicilio */}
                   {pedido.es_domicilio && pedido.direccion_domicilio && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-gray-700">
+                      <p className="text-xs text-zinc-700">
                         <strong>📍 Dirección:</strong><br />
                         {pedido.direccion_domicilio}
                       </p>
@@ -565,15 +685,15 @@ export default function PedidosPage() {
                     {pedido.detalle_pedidos.map((detalle) => (
                       <div key={detalle.id} className="flex justify-between items-start text-sm">
                         <div className="flex-1">
-                          <span className="text-purple-600 font-semibold">{detalle.cantidad}x</span>{' '}
-                          <span className="text-gray-700">{detalle.productos.nombre}</span>
+                          <span className="text-orange-600 font-semibold">{detalle.cantidad}x</span>{' '}
+                          <span className="text-zinc-900">{detalle.productos.nombre}</span>
                           {detalle.notas && (
                             <p className="text-xs text-orange-600 italic ml-5">
                               • {detalle.notas}
                             </p>
                           )}
                         </div>
-                        <span className="font-semibold text-gray-800 ml-2">
+                        <span className="font-semibold text-zinc-900 ml-2">
                           ${(detalle.productos.precio * detalle.cantidad).toLocaleString()}
                         </span>
                       </div>
@@ -581,10 +701,10 @@ export default function PedidosPage() {
                   </div>
 
                   {/* Total */}
-                  <div className="pt-3 border-t-2 border-gray-200">
+                  <div className="pt-3 border-t-2 border-zinc-200">
                     {pedido.es_domicilio && pedido.valor_domicilio > 0 ? (
                       <div className="space-y-1">
-                        <div className="flex justify-between text-sm text-gray-600">
+                        <div className="flex justify-between text-sm text-zinc-600">
                           <span>Subtotal:</span>
                           <span>${(pedido.total - pedido.valor_domicilio).toLocaleString()}</span>
                         </div>
@@ -592,49 +712,111 @@ export default function PedidosPage() {
                           <span>Domicilio:</span>
                           <span>${pedido.valor_domicilio.toLocaleString()}</span>
                         </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-                          <span className="font-bold text-gray-700">TOTAL:</span>
-                          <span className="text-2xl font-bold text-green-700">
+                        <div className="flex justify-between items-center pt-2 border-t border-zinc-300">
+                          <span className="font-bold text-zinc-900">TOTAL:</span>
+                          <span className="text-2xl font-bold text-orange-600">
                             ${pedido.total.toLocaleString()}
                           </span>
                         </div>
                       </div>
                     ) : (
                       <div className="flex justify-between items-center">
-                        <span className="font-bold text-gray-700">TOTAL:</span>
-                        <span className="text-2xl font-bold text-green-700">
+                        <span className="font-bold text-zinc-900">TOTAL:</span>
+                        <span className="text-2xl font-bold text-orange-600">
                           ${pedido.total.toLocaleString()}
                         </span>
                       </div>
                     )}
                   </div>
 
-                  {/* Mesero */}
-                  {pedido.usuarios && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <p className="text-xs text-gray-500">
-                        Atendió: <span className="font-semibold text-gray-700">{pedido.usuarios.nombre}</span>
+                  {/* Cliente y Mesero */}
+                  <div className="mt-3 pt-3 border-t border-zinc-200 space-y-1">
+                    {pedido.clientes && (
+                      <p className="text-xs text-zinc-500">
+                        Cliente: <span className="font-semibold text-zinc-900">{pedido.clientes.nombre}</span>
                       </p>
-                    </div>
-                  )}
+                    )}
+                    {pedido.usuarios && (
+                      <p className="text-xs text-zinc-500">
+                        Atendió: <span className="font-semibold text-zinc-900">{pedido.usuarios.nombre}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 🆕 Botones Cancelar y Reimprimir */}
+                  <div className="mt-4 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => reimprimirPedido(pedido.id)}
+                      className="flex-1 border-orange-300 hover:bg-orange-50 hover:border-orange-400"
+                      disabled={pedido.estado === 'cancelado'}
+                    >
+                      <Printer className="w-4 h-4 mr-1" />
+                      Reimprimir
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setPedidoACancelar(pedido.id)}
+                      className="flex-1 bg-red-500 hover:bg-red-600"
+                      disabled={pedido.estado === 'cancelado'}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Cancelar
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-lg">
+          <div className="text-center py-16 bg-white rounded-2xl shadow-lg border-2 border-zinc-200">
             <div className="text-6xl mb-4">📋</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+            <h3 className="text-xl font-semibold text-zinc-900 mb-2">
               No hay pedidos
             </h3>
-            <p className="text-gray-500">
-              {filtroTipo === 'todos' 
+            <p className="text-zinc-600">
+              {busqueda 
+                ? `No se encontraron resultados para "${busqueda}"` 
+                : filtroTipo === 'todos' 
                 ? 'Los pedidos aparecerán aquí automáticamente' 
                 : `No hay pedidos de tipo "${filtroTipo}"`}
             </p>
           </div>
         )}
       </div>
+
+      {/* 🆕 Dialog Cancelar Pedido */}
+      <AlertDialog open={!!pedidoACancelar} onOpenChange={() => setPedidoACancelar(null)}>
+        <AlertDialogContent className="border-2 border-zinc-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-zinc-900">¿Cancelar este pedido?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-600">
+              Esta acción marcará el pedido como cancelado y NO se contabilizará en las ventas. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelando} className="border-zinc-300">
+              No, volver
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => pedidoACancelar && cancelarPedido(pedidoACancelar)}
+              disabled={cancelando}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {cancelando ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Cancelando...
+                </>
+              ) : (
+                "Sí, cancelar pedido"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

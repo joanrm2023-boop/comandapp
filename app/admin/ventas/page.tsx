@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // Tipos
@@ -14,6 +14,7 @@ interface Pedido {
   estado: string;
   total: number;
   created_at: string;
+  medio_pago: string;
   mesas: {
     numero: string;
   };
@@ -36,13 +37,14 @@ export default function VentasPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroFecha, setFiltroFecha] = useState("hoy");
+  const [filtroPago, setFiltroPago] = useState("todos");
   const [mostrarDetalle, setMostrarDetalle] = useState(false);
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
 
   useEffect(() => {
     cargarVentas();
-  }, [filtroFecha, fechaInicio, fechaFin]);
+  }, [filtroFecha, filtroPago, fechaInicio, fechaFin]);
 
   const obtenerRangoFechas = () => {
     const ahora = new Date();
@@ -87,7 +89,7 @@ export default function VentasPage() {
     try {
       setLoading(true);
 
-      // 🔥 Obtener negocio_id del usuario actual
+      // Obtener negocio_id del usuario actual
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -102,8 +104,8 @@ export default function VentasPage() {
       const negocioId = usuarioData.negocio_id;
       const { inicio, fin } = obtenerRangoFechas();
 
-      // Cargar ventas DEL NEGOCIO
-      const { data, error } = await supabase
+      // Construir query base
+      let query = supabase
         .from('pedidos')
         .select(`
           id,
@@ -111,6 +113,7 @@ export default function VentasPage() {
           estado,
           total,
           created_at,
+          medio_pago,
           mesas (numero),
           detalle_pedidos (
             id,
@@ -118,11 +121,18 @@ export default function VentasPage() {
             productos (nombre)
           )
         `)
-        .eq('estado', 'entregado')
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('estado', 'vendido')
+        .eq('negocio_id', negocioId)
         .gte('created_at', inicio.toISOString())
         .lte('created_at', fin.toISOString())
         .order('created_at', { ascending: false });
+
+      // Aplicar filtro de medio de pago si no es "todos"
+      if (filtroPago !== 'todos') {
+        query = query.eq('medio_pago', filtroPago);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -192,11 +202,19 @@ export default function VentasPage() {
     });
   };
 
-  const formatearHora = (fecha: string) => {
-    return new Date(fecha).toLocaleTimeString('es-CO', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const obtenerIconoMedioPago = (medio: string) => {
+    switch (medio) {
+      case 'efectivo':
+        return '💵';
+      case 'nequi':
+        return '📱';
+      case 'daviplata':
+        return '📲';
+      case 'bold':
+        return '💳';
+      default:
+        return '💰';
+    }
   };
 
   const metricas = calcularMetricas();
@@ -204,189 +222,289 @@ export default function VentasPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-green-600" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-orange-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6">
+    <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-xl shadow-lg">
+            <div className="bg-gradient-to-br from-orange-500 to-red-500 p-3 rounded-xl shadow-lg shadow-orange-500/30">
               <DollarSign className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                 Ventas
               </h1>
-              <p className="text-gray-600 text-sm">
+              <p className="text-zinc-600 text-sm">
                 Análisis de ventas y estadísticas
               </p>
             </div>
           </div>
         </div>
 
-        {/* Filtros de fecha */}
-        <div className="bg-white rounded-2xl shadow-lg p-4 mb-6 border border-green-200">
-          <div className="flex flex-col gap-4">
-            {/* Botones rápidos */}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={filtroFecha === "hoy" ? "default" : "outline"}
-                onClick={() => setFiltroFecha("hoy")}
-                className={filtroFecha === "hoy" ? "bg-gradient-to-r from-green-500 to-emerald-600" : ""}
-              >
-                📅 Hoy
-              </Button>
-              <Button
-                variant={filtroFecha === "ayer" ? "default" : "outline"}
-                onClick={() => setFiltroFecha("ayer")}
-                className={filtroFecha === "ayer" ? "bg-gradient-to-r from-green-500 to-emerald-600" : ""}
-              >
-                📆 Ayer
-              </Button>
-              <Button
-                variant={filtroFecha === "semana" ? "default" : "outline"}
-                onClick={() => setFiltroFecha("semana")}
-                className={filtroFecha === "semana" ? "bg-gradient-to-r from-green-500 to-emerald-600" : ""}
-              >
-                📊 Última semana
-              </Button>
-              <Button
-                variant={filtroFecha === "mes" ? "default" : "outline"}
-                onClick={() => setFiltroFecha("mes")}
-                className={filtroFecha === "mes" ? "bg-gradient-to-r from-green-500 to-emerald-600" : ""}
-              >
-                📈 Este mes
-              </Button>
-              <Button
-                variant={filtroFecha === "personalizado" ? "default" : "outline"}
-                onClick={() => setFiltroFecha("personalizado")}
-                className={filtroFecha === "personalizado" ? "bg-gradient-to-r from-green-500 to-emerald-600" : ""}
-              >
-                🗓️ Rango personalizado
-              </Button>
-            </div>
+        {/* Filtros de Fecha */}
+        <div className="bg-white rounded-xl border-2 border-zinc-200 p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar className="w-5 h-5 text-orange-500" />
+            <h3 className="font-semibold text-zinc-900">Filtrar por Fecha</h3>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setFiltroFecha("hoy")}
+              variant={filtroFecha === "hoy" ? "default" : "outline"}
+              className={filtroFecha === "hoy" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              📅 Hoy
+            </Button>
+            <Button
+              onClick={() => setFiltroFecha("ayer")}
+              variant={filtroFecha === "ayer" ? "default" : "outline"}
+              className={filtroFecha === "ayer" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              📆 Ayer
+            </Button>
+            <Button
+              onClick={() => setFiltroFecha("semana")}
+              variant={filtroFecha === "semana" ? "default" : "outline"}
+              className={filtroFecha === "semana" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              📊 Última semana
+            </Button>
+            <Button
+              onClick={() => setFiltroFecha("mes")}
+              variant={filtroFecha === "mes" ? "default" : "outline"}
+              className={filtroFecha === "mes" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              📈 Este mes
+            </Button>
+            <Button
+              onClick={() => setFiltroFecha("personalizado")}
+              variant={filtroFecha === "personalizado" ? "default" : "outline"}
+              className={filtroFecha === "personalizado" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              🗓️ Rango personalizado
+            </Button>
+          </div>
 
-            {/* Selector de rango personalizado */}
-            {filtroFecha === "personalizado" && (
-              <div className="flex flex-col sm:flex-row gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Fecha inicio
-                  </label>
-                  <input
-                    type="date"
-                    value={fechaInicio}
-                    onChange={(e) => setFechaInicio(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Fecha fin
-                  </label>
-                  <input
-                    type="date"
-                    value={fechaFin}
-                    onChange={(e) => setFechaFin(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
+          {/* Selector de fechas personalizado */}
+          {filtroFecha === "personalizado" && (
+            <div className="flex gap-4 mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  Fecha inicio
+                </label>
+                <input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
               </div>
-            )}
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  Fecha fin
+                </label>
+                <input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => setFechaFin(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 🆕 Filtros por Medio de Pago */}
+        <div className="bg-white rounded-xl border-2 border-zinc-200 p-4 mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <CreditCard className="w-5 h-5 text-orange-500" />
+            <h3 className="font-semibold text-zinc-900">Filtrar por Medio de Pago</h3>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setFiltroPago("todos")}
+              variant={filtroPago === "todos" ? "default" : "outline"}
+              className={filtroPago === "todos" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              💰 Todos
+            </Button>
+            <Button
+              onClick={() => setFiltroPago("efectivo")}
+              variant={filtroPago === "efectivo" ? "default" : "outline"}
+              className={filtroPago === "efectivo" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              💵 Efectivo
+            </Button>
+            <Button
+              onClick={() => setFiltroPago("nequi")}
+              variant={filtroPago === "nequi" ? "default" : "outline"}
+              className={filtroPago === "nequi" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              📱 Nequi
+            </Button>
+            <Button
+              onClick={() => setFiltroPago("daviplata")}
+              variant={filtroPago === "daviplata" ? "default" : "outline"}
+              className={filtroPago === "daviplata" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              📲 Daviplata
+            </Button>
+            <Button
+              onClick={() => setFiltroPago("bold")}
+              variant={filtroPago === "bold" ? "default" : "outline"}
+              className={filtroPago === "bold" 
+                ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                : "border-zinc-300 hover:border-orange-400 hover:bg-orange-50"
+              }
+            >
+              💳 Bold
+            </Button>
+          </div>
+
+          {/* Indicador de filtros activos */}
+          <div className="mt-3 p-3 bg-zinc-50 rounded-lg border border-zinc-200">
+            <p className="text-sm text-zinc-700">
+              <span className="font-semibold">Mostrando:</span> Ventas de{" "}
+              <span className="font-semibold text-orange-600">
+                {filtroFecha === "hoy" && "hoy"}
+                {filtroFecha === "ayer" && "ayer"}
+                {filtroFecha === "semana" && "la última semana"}
+                {filtroFecha === "mes" && "este mes"}
+                {filtroFecha === "personalizado" && "rango personalizado"}
+              </span>
+              {filtroPago !== "todos" && (
+                <>
+                  {" "}pagadas con{" "}
+                  <span className="font-semibold text-orange-600">
+                    {obtenerIconoMedioPago(filtroPago)} {filtroPago}
+                  </span>
+                </>
+              )}
+            </p>
           </div>
         </div>
 
         {/* Tarjetas de métricas */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Total Ventas */}
-          <Card className="border-2 border-green-200 hover:shadow-xl transition-all duration-300">
+          <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-gray-600">
+                <CardTitle className="text-sm font-medium text-zinc-600">
                   Total Ventas
                 </CardTitle>
-                <div className="bg-green-100 p-2 rounded-lg">
-                  <DollarSign className="w-5 h-5 text-green-600" />
+                <div className="bg-orange-100 p-2 rounded-lg">
+                  <DollarSign className="w-5 h-5 text-orange-600" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-green-700">
+              <div className="text-3xl font-bold text-orange-600">
                 ${metricas.totalVentas.toLocaleString()}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Pedidos entregados
+              <p className="text-xs text-zinc-500 mt-1">
+                Pedidos vendidos
               </p>
             </CardContent>
           </Card>
 
           {/* Total Pedidos */}
-          <Card className="border-2 border-blue-200 hover:shadow-xl transition-all duration-300">
+          <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-gray-600">
+                <CardTitle className="text-sm font-medium text-zinc-600">
                   Total Pedidos
                 </CardTitle>
-                <div className="bg-blue-100 p-2 rounded-lg">
-                  <ShoppingBag className="w-5 h-5 text-blue-600" />
+                <div className="bg-zinc-900 p-2 rounded-lg">
+                  <ShoppingBag className="w-5 h-5 text-white" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-blue-700">
+              <div className="text-3xl font-bold text-zinc-900">
                 {metricas.totalPedidos}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-zinc-500 mt-1">
                 Pedidos completados
               </p>
             </CardContent>
           </Card>
 
           {/* Ticket Promedio */}
-          <Card className="border-2 border-purple-200 hover:shadow-xl transition-all duration-300">
+          <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-gray-600">
+                <CardTitle className="text-sm font-medium text-zinc-600">
                   Ticket Promedio
                 </CardTitle>
-                <div className="bg-purple-100 p-2 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-purple-600" />
+                <div className="bg-orange-100 p-2 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-orange-600" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-purple-700">
+              <div className="text-3xl font-bold text-orange-600">
                 ${Math.round(metricas.ticketPromedio).toLocaleString()}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-zinc-500 mt-1">
                 Por pedido
               </p>
             </CardContent>
           </Card>
 
           {/* Pedidos por Hora */}
-          <Card className="border-2 border-orange-200 hover:shadow-xl transition-all duration-300">
+          <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-gray-600">
+                <CardTitle className="text-sm font-medium text-zinc-600">
                   Pedidos/Hora
                 </CardTitle>
-                <div className="bg-orange-100 p-2 rounded-lg">
-                  <Clock className="w-5 h-5 text-orange-600" />
+                <div className="bg-zinc-900 p-2 rounded-lg">
+                  <Clock className="w-5 h-5 text-orange-500" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-orange-700">
+              <div className="text-3xl font-bold text-zinc-900">
                 {metricas.pedidosPorHora.toFixed(1)}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-zinc-500 mt-1">
                 Promedio
               </p>
             </CardContent>
@@ -395,9 +513,9 @@ export default function VentasPage() {
 
         {/* Top Productos */}
         {topProductos.length > 0 && (
-          <Card className="mb-6 border-2 border-yellow-200">
-            <CardHeader className="bg-gradient-to-r from-yellow-100 to-orange-100">
-              <CardTitle className="flex items-center gap-2 text-lg">
+          <Card className="mb-6 border-2 border-zinc-200">
+            <CardHeader className="bg-zinc-50 border-b border-zinc-200">
+              <CardTitle className="flex items-center gap-2 text-lg text-zinc-900">
                 <span className="text-2xl">🏆</span>
                 Top 5 Productos Más Vendidos
               </CardTitle>
@@ -407,20 +525,20 @@ export default function VentasPage() {
                 {topProductos.map((producto, index) => (
                   <div
                     key={producto.nombre}
-                    className="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg border border-yellow-200"
+                    className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg border border-zinc-200 hover:border-orange-300 transition-all"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`
                         w-8 h-8 rounded-full flex items-center justify-center font-bold text-white
-                        ${index === 0 ? 'bg-yellow-500' : 
-                          index === 1 ? 'bg-gray-400' : 
-                          index === 2 ? 'bg-orange-600' : 'bg-gray-300'}
+                        ${index === 0 ? 'bg-orange-500' : 
+                          index === 1 ? 'bg-zinc-700' : 
+                          index === 2 ? 'bg-orange-400' : 'bg-zinc-500'}
                       `}>
                         {index + 1}
                       </div>
-                      <span className="font-semibold text-gray-800">{producto.nombre}</span>
+                      <span className="font-semibold text-zinc-900">{producto.nombre}</span>
                     </div>
-                    <Badge className="bg-orange-500 text-white">
+                    <Badge className="bg-orange-500 hover:bg-orange-600 text-white">
                       {producto.cantidad} vendidos
                     </Badge>
                   </div>
@@ -431,20 +549,20 @@ export default function VentasPage() {
         )}
 
         {/* Detalle de Pedidos */}
-        <Card className="border-2 border-gray-200">
+        <Card className="border-2 border-zinc-200">
           <CardHeader>
             <button
               onClick={() => setMostrarDetalle(!mostrarDetalle)}
-              className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded-lg transition-colors"
+              className="w-full flex items-center justify-between hover:bg-zinc-50 p-2 rounded-lg transition-colors"
             >
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Calendar className="w-5 h-5" />
+              <CardTitle className="flex items-center gap-2 text-lg text-zinc-900">
+                <Calendar className="w-5 h-5 text-orange-500" />
                 Detalle de Pedidos ({pedidos.length})
               </CardTitle>
               {mostrarDetalle ? (
-                <ChevronUp className="w-5 h-5 text-gray-600" />
+                <ChevronUp className="w-5 h-5 text-zinc-600" />
               ) : (
-                <ChevronDown className="w-5 h-5 text-gray-600" />
+                <ChevronDown className="w-5 h-5 text-zinc-600" />
               )}
             </button>
           </CardHeader>
@@ -455,28 +573,34 @@ export default function VentasPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b-2 border-gray-200">
-                        <th className="text-left p-3 font-semibold text-gray-700">Fecha/Hora</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">Mesa</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">Items</th>
-                        <th className="text-right p-3 font-semibold text-gray-700">Total</th>
+                      <tr className="border-b-2 border-zinc-200">
+                        <th className="text-left p-3 font-semibold text-zinc-700">Fecha/Hora</th>
+                        <th className="text-left p-3 font-semibold text-zinc-700">Mesa</th>
+                        <th className="text-left p-3 font-semibold text-zinc-700">Items</th>
+                        <th className="text-left p-3 font-semibold text-zinc-700">Medio Pago</th>
+                        <th className="text-right p-3 font-semibold text-zinc-700">Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {pedidos.map((pedido) => (
-                        <tr key={pedido.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="p-3 text-sm text-gray-600">
+                        <tr key={pedido.id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                          <td className="p-3 text-sm text-zinc-600">
                             {formatearFecha(pedido.created_at)}
                           </td>
                           <td className="p-3">
-                            <Badge variant="outline" className="font-semibold">
+                            <Badge variant="outline" className="font-semibold border-zinc-300">
                               {pedido.mesas.numero}
                             </Badge>
                           </td>
-                          <td className="p-3 text-sm text-gray-600">
+                          <td className="p-3 text-sm text-zinc-600">
                             {pedido.detalle_pedidos.reduce((sum, d) => sum + d.cantidad, 0)} items
                           </td>
-                          <td className="p-3 text-right font-bold text-green-700">
+                          <td className="p-3">
+                            <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+                              {obtenerIconoMedioPago(pedido.medio_pago)} {pedido.medio_pago}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-right font-bold text-orange-600">
                             ${Number(pedido.total).toLocaleString()}
                           </td>
                         </tr>
@@ -485,7 +609,7 @@ export default function VentasPage() {
                   </table>
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-zinc-500">
                   No hay pedidos en este período
                 </div>
               )}
@@ -495,13 +619,13 @@ export default function VentasPage() {
 
         {/* Mensaje si no hay ventas */}
         {pedidos.length === 0 && (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-lg mt-6">
+          <div className="text-center py-16 bg-white rounded-2xl shadow-lg border-2 border-zinc-200 mt-6">
             <div className="text-6xl mb-4">📊</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+            <h3 className="text-xl font-semibold text-zinc-900 mb-2">
               No hay ventas registradas
             </h3>
-            <p className="text-gray-500">
-              No se encontraron pedidos entregados en el período seleccionado
+            <p className="text-zinc-600">
+              No se encontraron pedidos vendidos en el período seleccionado
             </p>
           </div>
         )}

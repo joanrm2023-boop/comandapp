@@ -77,7 +77,7 @@ export default function MeserosPage() {
         .from('usuarios')
         .select('*')
         .eq('rol', 'mesero')
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -180,7 +180,7 @@ export default function MeserosPage() {
             p_email: email.trim(),
             p_password: '123456',
             p_nombre: nombre.trim(),
-            p_negocio_id: negocioId // 👈 AGREGAR NEGOCIO_ID
+            p_negocio_id: negocioId
           });
 
         console.log('📊 Resultado de crear_usuario_mesero:', resultado);
@@ -254,32 +254,32 @@ export default function MeserosPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-purple-600" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-orange-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-blue-500 to-cyan-600 p-3 rounded-xl shadow-lg">
+            <div className="bg-gradient-to-br from-orange-500 to-red-500 p-3 rounded-xl shadow-lg shadow-orange-500/30">
               <Users className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                 Meseros
               </h1>
-              <p className="text-gray-600 text-sm">Gestiona los meseros del restaurante</p>
+              <p className="text-zinc-600 text-sm">Gestiona los meseros del restaurante</p>
             </div>
           </div>
 
           <Button
             onClick={abrirModalCrear}
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg shadow-orange-500/30"
           >
             <Plus className="w-4 h-4 mr-2" />
             Agregar Mesero
@@ -288,46 +288,46 @@ export default function MeserosPage() {
 
         {/* Tabla de meseros */}
         {meseros.length > 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-200">
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border-2 border-zinc-200">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-gray-200">
+                <thead className="bg-zinc-50 border-b-2 border-zinc-200">
                   <tr>
-                    <th className="text-left p-4 font-semibold text-gray-700">Nombre</th>
-                    <th className="text-left p-4 font-semibold text-gray-700">Email</th>
-                    <th className="text-left p-4 font-semibold text-gray-700">Estado</th>
-                    <th className="text-left p-4 font-semibold text-gray-700">Fecha creación</th>
-                    <th className="text-right p-4 font-semibold text-gray-700">Acciones</th>
+                    <th className="text-left p-4 font-semibold text-zinc-700">Nombre</th>
+                    <th className="text-left p-4 font-semibold text-zinc-700">Email</th>
+                    <th className="text-left p-4 font-semibold text-zinc-700">Estado</th>
+                    <th className="text-left p-4 font-semibold text-zinc-700">Fecha creación</th>
+                    <th className="text-right p-4 font-semibold text-zinc-700">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {meseros.map((mesero) => (
-                    <tr key={mesero.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <tr key={mesero.id} className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 flex items-center justify-center">
-                            <span className="text-blue-600 font-semibold">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 to-red-100 flex items-center justify-center">
+                            <span className="text-orange-600 font-semibold">
                               {mesero.nombre.charAt(0).toUpperCase()}
                             </span>
                           </div>
-                          <span className="font-medium text-gray-800">{mesero.nombre}</span>
+                          <span className="font-medium text-zinc-900">{mesero.nombre}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-gray-600">{mesero.email}</td>
+                      <td className="p-4 text-zinc-600">{mesero.email}</td>
                       <td className="p-4">
                         {mesero.activo ? (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
                             <UserCheck className="w-3 h-3 mr-1" />
                             Activo
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">
+                          <Badge variant="secondary" className="bg-zinc-200 text-zinc-700">
                             <UserX className="w-3 h-3 mr-1" />
                             Inactivo
                           </Badge>
                         )}
                       </td>
-                      <td className="p-4 text-gray-600 text-sm">
+                      <td className="p-4 text-zinc-600 text-sm">
                         {formatearFecha(mesero.created_at)}
                       </td>
                       <td className="p-4">
@@ -336,7 +336,7 @@ export default function MeserosPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => abrirModalEditar(mesero)}
-                            className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300"
+                            className="hover:bg-orange-50 hover:text-orange-600 hover:border-orange-400 border-zinc-300"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -357,15 +357,15 @@ export default function MeserosPage() {
             </div>
           </div>
         ) : (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-lg">
+          <div className="text-center py-16 bg-white rounded-2xl shadow-lg border-2 border-zinc-200">
             <div className="text-6xl mb-4">👥</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+            <h3 className="text-xl font-semibold text-zinc-900 mb-2">
               No hay meseros registrados
             </h3>
-            <p className="text-gray-500 mb-6">
+            <p className="text-zinc-600 mb-6">
               Comienza agregando tu primer mesero
             </p>
-            <Button onClick={abrirModalCrear} className="bg-gradient-to-r from-blue-600 to-cyan-600">
+            <Button onClick={abrirModalCrear} className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg shadow-orange-500/30">
               <Plus className="w-4 h-4 mr-2" />
               Agregar Mesero
             </Button>
@@ -375,12 +375,12 @@ export default function MeserosPage() {
 
       {/* Modal Crear/Editar */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] border-2 border-zinc-200">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+            <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
               {meseroAEditar ? 'Editar Mesero' : 'Agregar Mesero'}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-zinc-600">
               {meseroAEditar 
                 ? 'Modifica los datos del mesero' 
                 : 'Completa la información del nuevo mesero'
@@ -390,18 +390,19 @@ export default function MeserosPage() {
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="nombre">Nombre completo</Label>
+              <Label htmlFor="nombre" className="text-zinc-700">Nombre completo</Label>
               <Input
                 id="nombre"
                 placeholder="Ej: Juan Pérez"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 disabled={guardando}
+                className="border-zinc-300 focus:ring-orange-500 focus:border-orange-500"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-zinc-700">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -409,13 +410,14 @@ export default function MeserosPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={guardando}
+                className="border-zinc-300 focus:ring-orange-500 focus:border-orange-500"
               />
             </div>
 
             {!meseroAEditar && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <strong>ℹ️ Contraseña automática:</strong> Todos los meseros tendrán la contraseña: <code className="bg-blue-100 px-2 py-1 rounded">123456</code>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <p className="text-sm text-orange-800">
+                  <strong>ℹ️ Contraseña automática:</strong> Todos los meseros tendrán la contraseña: <code className="bg-orange-100 px-2 py-1 rounded">123456</code>
                 </p>
               </div>
             )}
@@ -428,13 +430,13 @@ export default function MeserosPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={cerrarModal} disabled={guardando}>
+            <Button variant="outline" onClick={cerrarModal} disabled={guardando} className="border-zinc-300">
               Cancelar
             </Button>
             <Button
               onClick={guardarMesero}
               disabled={guardando}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
             >
               {guardando ? (
                 <>
@@ -451,15 +453,15 @@ export default function MeserosPage() {
 
       {/* Dialog Eliminar */}
       <AlertDialog open={!!meseroAEliminar} onOpenChange={() => setMeseroAEliminar(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="border-2 border-zinc-200">
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar mesero?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-zinc-900">¿Eliminar mesero?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-600">
               Esta acción desactivará el mesero y no podrá iniciar sesión. Los pedidos realizados por este mesero se mantendrán en el historial.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={eliminando}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={eliminando} className="border-zinc-300">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => meseroAEliminar && eliminarMesero(meseroAEliminar)}
               disabled={eliminando}

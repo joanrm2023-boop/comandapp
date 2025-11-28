@@ -107,7 +107,7 @@ export default function MenuPage() {
         .from('categorias')
         .select('*')
         .eq('activo', true)
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('nombre');
 
       if (errorCat) throw errorCat;
@@ -131,7 +131,7 @@ export default function MenuPage() {
           )
         `)
         .eq('activo', true)
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('nombre');
 
       if (errorProd) throw errorProd;
@@ -167,7 +167,7 @@ export default function MenuPage() {
         .from('categorias')
         .select('*')
         .eq('activo', true)
-        .eq('negocio_id', negocioId) // 👈 FILTRAR POR NEGOCIO
+        .eq('negocio_id', negocioId)
         .order('nombre');
 
       if (errorCat) throw errorCat;
@@ -274,10 +274,10 @@ export default function MenuPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-          <p className="text-gray-600">Cargando menú...</p>
+          <Loader2 className="w-12 h-12 animate-spin text-orange-500 mx-auto mb-4" />
+          <p className="text-zinc-600">Cargando menú...</p>
         </div>
       </div>
     );
@@ -285,12 +285,15 @@ export default function MenuPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center bg-white p-8 rounded-2xl shadow-lg border-2 border-zinc-200">
           <div className="text-6xl mb-4">⚠️</div>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">Error al cargar</h3>
-          <p className="text-gray-500 mb-4">{error}</p>
-          <Button onClick={cargarDatos}>
+          <h3 className="text-xl font-semibold text-zinc-900 mb-2">Error al cargar</h3>
+          <p className="text-zinc-600 mb-4">{error}</p>
+          <Button 
+            onClick={cargarDatos}
+            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+          >
             Reintentar
           </Button>
         </div>
@@ -299,19 +302,19 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-purple-500 to-pink-600 p-3 rounded-xl shadow-lg">
+            <div className="bg-gradient-to-br from-orange-500 to-red-500 p-3 rounded-xl shadow-lg shadow-orange-500/30">
               <UtensilsCrossed className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                 Menú
               </h1>
-              <p className="text-gray-600 text-sm">Gestiona tus productos</p>
+              <p className="text-zinc-600 text-sm">Gestiona tus productos</p>
             </div>
           </div>
 
@@ -319,14 +322,14 @@ export default function MenuPage() {
             <Button 
               variant="outline"
               onClick={() => setModalCategoriaOpen(true)}
-              className="border-purple-200 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all"
+              className="border-zinc-300 hover:bg-zinc-50 hover:text-orange-600 hover:border-orange-400 transition-all"
             >
               <FolderPlus className="w-4 h-4 mr-2" />
               Agregar categoría
             </Button>
             <Button 
               onClick={() => setModalProductoOpen(true)}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg hover:shadow-xl transition-all duration-300"
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg shadow-orange-500/30 hover:shadow-xl transition-all duration-300"
             >
               <Plus className="w-4 h-4 mr-2" />
               Agregar producto
@@ -335,20 +338,20 @@ export default function MenuPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border-2 border-zinc-200">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-zinc-400 w-5 h-5" />
               <Input
                 placeholder="Buscar producto..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-10 h-12 border-gray-200 focus:ring-2 focus:ring-purple-500"
+                className="pl-10 h-12 border-zinc-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
               />
             </div>
 
             <Select value={categoria} onValueChange={setCategoria}>
-              <SelectTrigger className="w-full sm:w-64 h-12 border-gray-200 focus:ring-2 focus:ring-purple-500">
+              <SelectTrigger className="w-full sm:w-64 h-12 border-zinc-300 focus:ring-2 focus:ring-orange-500">
                 <SelectValue placeholder="Categoría" />
               </SelectTrigger>
               <SelectContent>
@@ -372,14 +375,14 @@ export default function MenuPage() {
               return (
                 <div key={catNombre} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                   {/* Título de categoría */}
-                  <div className="flex items-center justify-between mb-6 bg-white rounded-xl p-4 shadow-md border-2 border-gray-100">
+                  <div className="flex items-center justify-between mb-6 bg-zinc-50 rounded-xl p-4 shadow-md border-2 border-zinc-200">
                     <div className="flex items-center gap-3">
                       <div className={`bg-gradient-to-r ${config.color} p-3 rounded-xl shadow-lg`}>
                         <span className="text-3xl">{config.icono}</span>
                       </div>
                       <div>
-                        <h2 className="text-2xl font-bold text-gray-800">{catNombre}</h2>
-                        <p className="text-gray-500 text-sm">
+                        <h2 className="text-2xl font-bold text-zinc-900">{catNombre}</h2>
+                        <p className="text-zinc-600 text-sm">
                           {productosGrupo.length} {productosGrupo.length === 1 ? 'producto' : 'productos'}
                         </p>
                       </div>
@@ -391,7 +394,7 @@ export default function MenuPage() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all"
+                          className="hover:bg-orange-50 hover:text-orange-600 hover:border-orange-400 transition-all border-zinc-300"
                           onClick={() => {
                             const cat = categorias.find(c => c.nombre === catNombre);
                             if (cat) setCategoriaAEditar(cat);
@@ -421,26 +424,26 @@ export default function MenuPage() {
                     {productosGrupo.map((producto) => (
                       <Card 
                         key={producto.id} 
-                        className="group hover:shadow-2xl transition-all duration-300 border-2 border-transparent hover:border-purple-200 bg-white overflow-hidden"
+                        className="group hover:shadow-2xl hover:shadow-orange-500/20 transition-all duration-300 border-2 border-zinc-200 hover:border-orange-300 bg-white overflow-hidden"
                       >
                         <div className={`h-2 bg-gradient-to-r ${config.color}`}></div>
                         <CardHeader className="pb-2 p-3">
-                          <CardTitle className="text-sm sm:text-lg font-semibold text-gray-800 group-hover:text-purple-600 transition-colors line-clamp-2">
+                          <CardTitle className="text-sm sm:text-lg font-semibold text-zinc-900 group-hover:text-orange-600 transition-colors line-clamp-2">
                             {producto.nombre}
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2 p-3 pt-0">
-                          <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-2 border border-gray-200">
-                            <p className="text-xs text-gray-600 mb-0.5">Categoría</p>
-                            <p className="font-medium text-xs sm:text-sm text-gray-800 flex items-center gap-1">
+                          <div className="bg-zinc-50 rounded-lg p-2 border border-zinc-200">
+                            <p className="text-xs text-zinc-600 mb-0.5">Categoría</p>
+                            <p className="font-medium text-xs sm:text-sm text-zinc-900 flex items-center gap-1">
                               <span className="text-sm">{config.icono}</span>
                               <span className="truncate">{catNombre}</span>
                             </p>
                           </div>
 
-                          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-2 border border-green-200">
-                            <p className="text-xs text-gray-600 mb-0.5">Precio</p>
-                            <p className="text-lg sm:text-2xl font-bold text-green-700">
+                          <div className="bg-orange-50 rounded-lg p-2 border border-orange-200">
+                            <p className="text-xs text-zinc-600 mb-0.5">Precio</p>
+                            <p className="text-lg sm:text-2xl font-bold text-orange-600">
                               ${Number(producto.precio).toLocaleString()}
                             </p>
                           </div>
@@ -449,7 +452,7 @@ export default function MenuPage() {
                             <Button 
                               variant="outline" 
                               size="sm"
-                              className="flex-1 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all text-xs p-2 h-8"
+                              className="flex-1 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-400 transition-all text-xs p-2 h-8 border-zinc-300"
                               onClick={() => setProductoAEditar(producto)}
                             >
                               <Edit className="w-3 h-3 sm:mr-1" />
@@ -474,12 +477,12 @@ export default function MenuPage() {
             })}
           </div>
         ) : (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-lg">
+          <div className="text-center py-16 bg-white rounded-2xl shadow-lg border-2 border-zinc-200">
             <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+            <h3 className="text-xl font-semibold text-zinc-900 mb-2">
               No se encontraron productos
             </h3>
-            <p className="text-gray-500">
+            <p className="text-zinc-600">
               {productos.length === 0 
                 ? 'No hay productos en la base de datos' 
                 : 'Intenta con otros términos de búsqueda o filtros'}
@@ -512,15 +515,15 @@ export default function MenuPage() {
 
       {/* Dialog de confirmación para eliminar PRODUCTO */}
       <AlertDialog open={!!productoAEliminar} onOpenChange={() => setProductoAEliminar(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="border-2 border-zinc-200">
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-zinc-900">¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-600">
               Esta acción desactivará el producto. No aparecerá en el menú pero podrás reactivarlo después desde la base de datos si lo necesitas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={eliminando}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={eliminando} className="border-zinc-300">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => productoAEliminar && eliminarProducto(productoAEliminar)}
               disabled={eliminando}
@@ -541,15 +544,15 @@ export default function MenuPage() {
 
       {/* Dialog de confirmación para eliminar CATEGORÍA */}
       <AlertDialog open={!!categoriaAEliminar} onOpenChange={() => setCategoriaAEliminar(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="border-2 border-zinc-200">
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-zinc-900">¿Eliminar categoría?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-600">
               Esta acción desactivará la categoría. Solo se puede eliminar si no tiene productos asociados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={eliminando}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={eliminando} className="border-zinc-300">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => categoriaAEliminar && eliminarCategoria(categoriaAEliminar)}
               disabled={eliminando}
