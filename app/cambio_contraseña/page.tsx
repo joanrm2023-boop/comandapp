@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { Loader2, Mail, Lock, Eye, EyeOff, ChefHat, ArrowLeft, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
-export default function CambioContrasenaPage() {
+function CambioContrasenaContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -31,9 +31,18 @@ export default function CambioContrasenaPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Verificar si hay una sesión activa del token
+  // Verificar si hay hash en la URL (token de recuperación)
   useEffect(() => {
-    if (token) {
+    // Supabase pone el token en el hash de la URL
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    const type = hashParams.get('type');
+
+    if (type === 'recovery' && accessToken) {
+      // Hay un token de recuperación válido
+      setStep('password');
+    } else if (token) {
+      // Fallback: intenta verificar el token del query param
       verificarToken();
     }
   }, [token]);
@@ -45,6 +54,8 @@ export default function CambioContrasenaPage() {
       if (error || !data.session) {
         setErrorPassword("Token inválido o expirado. Solicita un nuevo enlace de recuperación.");
         setStep('email');
+      } else {
+        setStep('password');
       }
     } catch (error) {
       console.error('Error verificando token:', error);
@@ -66,7 +77,9 @@ export default function CambioContrasenaPage() {
       setErrorEmail("");
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/cambio-contrasena`,
+        redirectTo: typeof window !== 'undefined' 
+          ? `${window.location.origin}/cambio-contrasena`
+          : 'https://dishhubapp.vercel.app/cambio-contrasena',
       });
 
       if (error) throw error;
@@ -399,5 +412,20 @@ export default function CambioContrasenaPage() {
         DishHub v1.0
       </div>
     </div>
+  );
+}
+
+// Componente principal con Suspense
+export default function CambioContrasenaPage() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="min-h-screen bg-black flex items-center justify-center">
+          <Loader2 className="w-12 h-12 animate-spin text-orange-500" />
+        </div>
+      }
+    >
+      <CambioContrasenaContent />
+    </Suspense>
   );
 }
