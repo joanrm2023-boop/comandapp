@@ -22,6 +22,7 @@ function CambioContrasenaContent() {
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [errorEmail, setErrorEmail] = useState("");
   const [emailEnviado, setEmailEnviado] = useState(false);
+  const [segundosEspera, setSegundosEspera] = useState(0);
 
   // Estados para cambiar contraseña
   const [password, setPassword] = useState("");
@@ -87,6 +88,18 @@ function CambioContrasenaContent() {
     }
   };
 
+  // Temporizador de espera para rate limit
+  useEffect(() => {
+    if (segundosEspera > 0) {
+      const timer = setTimeout(() => {
+        setSegundosEspera(segundosEspera - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (segundosEspera === 0 && errorEmail.includes('esperar')) {
+      setErrorEmail('');
+    }
+  }, [segundosEspera]);
+
   const enviarEmailRecuperacion = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -99,10 +112,15 @@ function CambioContrasenaContent() {
       setLoadingEmail(true);
       setErrorEmail("");
 
+      // Configurar opciones de redirect con fallback
+      const redirectUrl = typeof window !== 'undefined' 
+        ? `${window.location.origin}/cambio-contrasena`
+        : 'https://dishhubapp.vercel.app/cambio-contrasena';
+
+      console.log('🔗 Redirect URL configurada:', redirectUrl);
+
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: typeof window !== 'undefined' 
-          ? `${window.location.origin}/cambio-contrasena`
-          : 'https://dishhubapp.vercel.app/cambio-contrasena',
+        redirectTo: redirectUrl,
       });
 
       if (error) throw error;
@@ -111,7 +129,17 @@ function CambioContrasenaContent() {
       
     } catch (err: any) {
       console.error("Error enviando email:", err);
-      setErrorEmail("Error al enviar el correo. Verifica que el email sea correcto.");
+      
+      // Manejar error de rate limit (seguridad de Supabase)
+      if (err.message?.includes('request this after')) {
+        const segundos = parseInt(err.message.match(/\d+/)?.[0] || '60');
+        setSegundosEspera(segundos);
+        setErrorEmail(`Por seguridad, debes esperar ${segundos} segundos antes de solicitar otro correo.`);
+      } else if (err.message?.includes('Email not found') || err.message?.includes('User not found')) {
+        setErrorEmail("No existe una cuenta con este correo electrónico.");
+      } else {
+        setErrorEmail("Error al enviar el correo. Verifica que el email sea correcto.");
+      }
     } finally {
       setLoadingEmail(false);
     }
@@ -219,18 +247,31 @@ function CambioContrasenaContent() {
               {errorEmail && (
                 <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
                   {errorEmail}
+                  {segundosEspera > 0 && (
+                    <div className="mt-2 pt-2 border-t border-red-500/20">
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="font-bold">{segundosEspera}s</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               <Button
                 type="submit"
-                disabled={loadingEmail}
-                className="w-full h-12 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold shadow-xl shadow-orange-500/50 hover:shadow-orange-500/75 transition-all duration-300"
+                disabled={loadingEmail || segundosEspera > 0}
+                className="w-full h-12 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold shadow-xl shadow-orange-500/50 hover:shadow-orange-500/75 transition-all duration-300 disabled:opacity-50"
               >
                 {loadingEmail ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Enviando...
+                  </>
+                ) : segundosEspera > 0 ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Espera {segundosEspera}s
                   </>
                 ) : (
                   <>
