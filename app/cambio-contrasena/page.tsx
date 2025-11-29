@@ -33,18 +33,41 @@ function CambioContrasenaContent() {
 
   // Verificar si hay hash en la URL (token de recuperación)
   useEffect(() => {
-    // Supabase pone el token en el hash de la URL
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const accessToken = hashParams.get('access_token');
-    const type = hashParams.get('type');
+    const manejarTokenRecuperacion = async () => {
+      // Supabase pone el token en el hash de la URL
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const type = hashParams.get('type');
 
-    if (type === 'recovery' && accessToken) {
-      // Hay un token de recuperación válido
-      setStep('password');
-    } else if (token) {
-      // Fallback: intenta verificar el token del query param
-      verificarToken();
-    }
+      if (type === 'recovery' && accessToken && refreshToken) {
+        try {
+          // Establecer la sesión con los tokens del email
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+
+          if (error) {
+            console.error('Error estableciendo sesión:', error);
+            setErrorPassword("Token inválido o expirado. Solicita un nuevo enlace de recuperación.");
+            setStep('email');
+          } else {
+            console.log('✅ Sesión establecida correctamente');
+            setStep('password');
+          }
+        } catch (error) {
+          console.error('Error procesando token:', error);
+          setErrorPassword("Error al procesar el token de recuperación");
+          setStep('email');
+        }
+      } else if (token) {
+        // Fallback: intenta verificar el token del query param
+        verificarToken();
+      }
+    };
+
+    manejarTokenRecuperacion();
   }, [token]);
 
   const verificarToken = async () => {
