@@ -72,12 +72,13 @@ export default function MeserosPage() {
 
       const negocioId = usuarioData.negocio_id;
 
-      // Cargar meseros DEL NEGOCIO
+      // Cargar meseros DEL NEGOCIO (solo activos)
       const { data, error } = await supabase
         .from('usuarios')
         .select('*')
         .eq('rol', 'mesero')
         .eq('negocio_id', negocioId)
+        .eq('activo', true) // 👈 Solo meseros activos
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -145,56 +146,70 @@ export default function MeserosPage() {
         console.log('✅ Mesero actualizado exitosamente');
 
       } else {
-        // CREAR nuevo mesero usando función SQL
+        // CREAR nuevo mesero (SIN API - directo como en registro)
 
         console.log('📝 Creando mesero:', { nombre: nombre.trim(), email: email.trim() });
 
-        // 1. Verificar que el email no exista ya
-        const { data: existeEmail } = await supabase
-          .from('usuarios')
-          .select('email')
-          .eq('email', email.trim())
-          .single();
-
-        if (existeEmail) {
-          throw new Error('Este email ya está registrado');
-        }
-
-        // 🔥 NUEVO: Obtener negocio_id del usuario actual
+        // Obtener negocio_id del usuario actual
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Usuario no autenticado');
 
-        const { data: usuarioData } = await supabase
+        console.log('👤 Usuario actual:', { id: user.id, email: user.email });
+
+        const { data: usuarioData, error: usuarioError } = await supabase
           .from('usuarios')
-          .select('negocio_id')
+          .select('negocio_id, nombre, rol')
           .eq('auth_user_id', user.id)
           .single();
+
+        console.log('📊 Datos del usuario:', { usuarioData, usuarioError });
 
         if (!usuarioData) throw new Error('No se pudo obtener el negocio');
 
         const negocioId = usuarioData.negocio_id;
 
-        // 2. Llamar a la función SQL para crear el usuario completo
-        const { data: resultado, error: funcionError } = await supabase
-          .rpc('crear_usuario_mesero', {
-            p_email: email.trim(),
-            p_password: '123456',
-            p_nombre: nombre.trim(),
-            p_negocio_id: negocioId
-          });
+        // 1. Crear usuario en Supabase Auth (IGUAL QUE EN REGISTRO)
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: '123456', // Contraseña fija
+          options: {
+            emailRedirectTo: undefined, // No enviar email
+            data: {
+              nombre: nombre.trim(),
+              rol: 'mesero'
+            }
+          }
+        });
 
-        console.log('📊 Resultado de crear_usuario_mesero:', resultado);
-
-        if (funcionError) {
-          console.error('❌ Error en función SQL:', funcionError);
-          throw new Error(funcionError.message);
+        if (signUpError) {
+          console.error('❌ Error en signUp:', signUpError);
+          throw new Error(signUpError.message);
         }
 
-        if (!resultado || !resultado.success) {
-          throw new Error(resultado?.error || 'Error al crear el usuario');
+        if (!authData.user) {
+          throw new Error('No se pudo crear el usuario');
         }
 
-        console.log('✅ Mesero creado exitosamente con ID:', resultado.user_id);
+        console.log('✅ Usuario auth creado:', authData.user.id);
+
+        // 2. Crear en tabla usuarios
+        const { error: insertError } = await supabase
+          .from('usuarios')
+          .insert([{
+            auth_user_id: authData.user.id,
+            negocio_id: negocioId,
+            nombre: nombre.trim(),
+            email: email.trim(),
+            rol: 'mesero',
+            activo: true
+          }]);
+
+        if (insertError) {
+          console.error('❌ Error insertando usuario:', insertError);
+          throw new Error(insertError.message);
+        }
+
+        console.log('✅ Mesero creado exitosamente');
       }
 
       // Recargar lista
@@ -204,14 +219,14 @@ export default function MeserosPage() {
     } catch (err: any) {
       console.error('Error guardando mesero:', err);
       
-      if (err.message?.includes('already registered') || err.message?.includes('ya está registrado')) {
-        setError('Este email ya está registrado');
+      if (err.message?.includes('ya está registrado')) {
+        setError('Este email ya está registrado como mesero');
       } else if (err.code === '23505') {
         setError('Este email ya existe en el sistema');
       } else if (err.message) {
         setError(err.message);
       } else {
-        setError('Error al guardar el mesero. Intenta de nuevo.');
+        setError('Error al guardar el mesero. Verifica tu conexión e intenta de nuevo.');
       }
     } finally {
       setGuardando(false);
@@ -406,7 +421,7 @@ export default function MeserosPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="juan@restau.app"
+                placeholder="juan@restaurante.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={guardando}
@@ -415,9 +430,9 @@ export default function MeserosPage() {
             </div>
 
             {!meseroAEditar && (
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                 <p className="text-sm text-orange-800">
-                  <strong>ℹ️ Contraseña automática:</strong> Todos los meseros tendrán la contraseña: <code className="bg-orange-100 px-2 py-1 rounded">123456</code>
+                  <strong>🔑 Contraseña temporal:</strong> El mesero podrá iniciar sesión con su email y la contraseña <code className="bg-orange-100 px-2 py-1 rounded font-mono">123456</code>
                 </p>
               </div>
             )}

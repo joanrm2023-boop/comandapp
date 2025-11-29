@@ -104,7 +104,7 @@ export default function DashboardPage() {
       finAyer.setDate(finAyer.getDate() - 1);
       finAyer.setHours(23, 59, 59, 999);
 
-      // Cargar pedidos de hoy DEL NEGOCIO (sin filtro de estado)
+      // Cargar pedidos de hoy DEL NEGOCIO (solo vendidos)
       const { data: dataPedidosHoy, error: errorHoy } = await supabase
         .from('pedidos')
         .select(`
@@ -118,6 +118,7 @@ export default function DashboardPage() {
             productos (nombre)
           )
         `)
+        .eq('estado', 'vendido')
         .eq('negocio_id', negocioId)
         .gte('created_at', hoy.toISOString())
         .lte('created_at', finHoy.toISOString());
@@ -128,6 +129,7 @@ export default function DashboardPage() {
       const { data: dataPedidosAyer, error: errorAyer } = await supabase
         .from('pedidos')
         .select('id, total')
+        .eq('estado', 'vendido')
         .eq('negocio_id', negocioId)
         .gte('created_at', ayer.toISOString())
         .lte('created_at', finAyer.toISOString());

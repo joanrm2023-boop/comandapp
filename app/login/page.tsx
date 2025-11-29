@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { Loader2, Mail, Lock, Eye, EyeOff, ChefHat } from "lucide-react";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -122,8 +123,9 @@ export default function LoginPage() {
       // 3. Obtener el rol del usuario desde la tabla 'usuarios'
       const { data: usuarioData, error: usuarioError } = await supabase
         .from('usuarios')
-        .select('rol, nombre, auth_user_id')
+        .select('rol, nombre, auth_user_id, activo')  // ← AGREGADO 'activo'
         .eq('auth_user_id', authData.user.id)
+        .eq('activo', true)  // ← NUEVA LÍNEA: solo usuarios activos
         .single();
 
       console.log('5️⃣ Respuesta de tabla usuarios:', {
@@ -132,17 +134,13 @@ export default function LoginPage() {
         data: usuarioData
       });
 
-      if (usuarioError) {
-        console.error('❌ Error buscando usuario:', usuarioError);
-        throw usuarioError;
+      // Si no hay datos, usuario no existe o está inactivo
+      if (usuarioError || !usuarioData) {
+        await supabase.auth.signOut();
+        throw new Error('Usuario no encontrado o inactivo');
       }
 
-      if (!usuarioData) {
-        console.error('❌ Usuario no encontrado en tabla usuarios');
-        throw new Error('Usuario no encontrado en la base de datos');
-      }
-
-      console.log('6️⃣ Usuario encontrado:', {
+      console.log('6️⃣ Usuario encontrado y activo:', {
         nombre: usuarioData.nombre,
         rol: usuarioData.rol
       });
@@ -166,15 +164,13 @@ export default function LoginPage() {
       }
 
     } catch (err: any) {
-      console.error("========== ERROR EN LOGIN ==========");
-      console.error('Error completo:', err);
       
-      if (err.message.includes("Invalid login credentials")) {
+      if (err.message === 'Usuario no encontrado o inactivo') {
+        setError("Usuario no encontrado o inactivo");
+      } else if (err.message?.includes("Invalid login credentials")) {
         setError("Email o contraseña incorrectos");
-      } else if (err.message.includes("Email not confirmed")) {
+      } else if (err.message?.includes("Email not confirmed")) {
         setError("Por favor confirma tu email");
-      } else if (err.message.includes("no encontrado")) {
-        setError("Usuario no encontrado en la base de datos. Contacta al administrador.");
       } else {
         setError("Error al iniciar sesión. Intenta de nuevo.");
       }
@@ -318,15 +314,14 @@ export default function LoginPage() {
             </Button>
 
             {/* Olvidé mi contraseña */}
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                className="text-sm text-orange-400 hover:text-orange-300 font-medium transition-colors"
-                disabled={loading}
-              >
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
+              <div className="text-center pt-2">
+                <Link
+                  href="/cambio-contrasena"
+                  className="text-sm text-orange-400 hover:text-orange-300 font-medium transition-colors"
+                >
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </div>
           </form>
 
           {/* Footer */}
