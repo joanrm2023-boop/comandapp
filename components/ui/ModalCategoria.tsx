@@ -98,6 +98,19 @@ export default function ModalCategoria({
         if (updateError) throw updateError;
       } else {
         // 👇 CREAR nueva categoría
+        
+        // Obtener negocio_id del usuario actual
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Usuario no autenticado');
+
+        const { data: usuarioData, error: usuarioError } = await supabase
+          .from('usuarios')
+          .select('negocio_id')
+          .eq('auth_user_id', user.id)
+          .single();
+
+        if (usuarioError || !usuarioData) throw new Error('No se pudo obtener el negocio del usuario');
+
         const { error: insertError } = await supabase
           .from('categorias')
           .insert([
@@ -105,6 +118,7 @@ export default function ModalCategoria({
               nombre: nombre.trim(),
               icono: icono,
               color: color,
+              negocio_id: usuarioData.negocio_id, // 👈 AGREGADO
               activo: true
             }
           ]);

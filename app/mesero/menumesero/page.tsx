@@ -157,14 +157,32 @@ export default function MeseroPage() {
         .from('mesas')
         .select('*')
         .eq('activo', true)
-        .eq('negocio_id', negocioId)
-        .order('numero');
+        .eq('negocio_id', negocioId);
 
       if (errorMesas) throw errorMesas;
 
+      // Ordenar las mesas de forma natural
+      const mesasOrdenadas = (mesasData as Mesa[] ?? []).sort((a, b) => {
+        // Extraer números de los nombres
+        const numeroA = a.numero.match(/\d+/);
+        const numeroB = b.numero.match(/\d+/);
+        
+        // Si ambos tienen números, comparar numéricamente
+        if (numeroA && numeroB) {
+          return parseInt(numeroA[0]) - parseInt(numeroB[0]);
+        }
+        
+        // Si solo uno tiene número, el que tiene va después
+        if (numeroA) return 1;
+        if (numeroB) return -1;
+        
+        // Si ninguno tiene número, ordenar alfabéticamente
+        return a.numero.localeCompare(b.numero);
+      });
+
       setCategorias(categoriasData as any ?? []);
       setProductos(productosData as any ?? []);
-      setMesas(mesasData as any ?? []);
+      setMesas(mesasOrdenadas);
       setError(null);
     } catch (err) {
       console.error('Error cargando datos:', err);
@@ -176,9 +194,17 @@ export default function MeseroPage() {
 
   const productosFiltrados = useMemo(() => {
     return productos.filter((p) => {
-      const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
-      const categoriaNombre = p.categorias?.nombre || '';
-      const coincideCategoria = categoria === "Todas" ? true : categoriaNombre === categoria;
+      const busquedaLower = busqueda.toLowerCase();
+      const nombreProducto = p.nombre.toLowerCase();
+      const categoriaNombre = p.categorias?.nombre?.toLowerCase() || '';
+      
+      // Coincide si busca en el nombre del producto O en el nombre de la categoría
+      const coincideBusqueda = nombreProducto.includes(busquedaLower) || 
+                              categoriaNombre.includes(busquedaLower);
+      
+      const coincideCategoria = categoria === "Todas" ? true : 
+                              p.categorias?.nombre === categoria;
+      
       return coincideBusqueda && coincideCategoria;
     });
   }, [busqueda, categoria, productos]);
@@ -202,7 +228,20 @@ export default function MeseroPage() {
       grupos[catNombre].productos.push(producto);
     });
     
-    return grupos;
+    // Ordenar productos dentro de cada categoría por precio (mayor a menor)
+    Object.keys(grupos).forEach(catNombre => {
+      grupos[catNombre].productos.sort((a, b) => b.precio - a.precio);
+    });
+    
+    // Convertir a array, ordenar categorías alfabéticamente y volver a objeto
+    const gruposOrdenados = Object.keys(grupos)
+      .sort((a, b) => a.localeCompare(b))
+      .reduce((acc, key) => {
+        acc[key] = grupos[key];
+        return acc;
+      }, {} as Record<string, GrupoProductos>);
+    
+    return gruposOrdenados;
   }, [productosFiltrados]);
 
   const agregarProducto = (producto: Producto) => {

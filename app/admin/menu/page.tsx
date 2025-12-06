@@ -243,12 +243,19 @@ export default function MenuPage() {
 
   const productosFiltrados = useMemo(() => {
     return productos.filter((p) => {
-      const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
-      const categoriaNombre = p.categorias?.nombre || '';
-      const coincideCategoria = categoria === "Todas" ? true : categoriaNombre === categoria;
+      const busquedaLower = busqueda.toLowerCase();
+      const nombreProducto = p.nombre.toLowerCase();
+      const categoriaNombre = p.categorias?.nombre?.toLowerCase() || '';
+      
+      const coincideBusqueda = nombreProducto.includes(busquedaLower) || 
+                              categoriaNombre.includes(busquedaLower);
+      
+      const coincideCategoria = categoria === "Todas" ? true : 
+                              p.categorias?.nombre === categoria;
+      
       return coincideBusqueda && coincideCategoria;
     });
-  }, [busqueda, categoria, productos]);
+  }, [busqueda, categoria, productos]); 
 
   const productosAgrupados = useMemo(() => {
     const grupos: Record<string, GrupoProductos> = {};
@@ -269,7 +276,20 @@ export default function MenuPage() {
       grupos[catNombre].productos.push(producto);
     });
     
-    return grupos;
+    // Ordenar productos dentro de cada categoría por precio (mayor a menor)
+    Object.keys(grupos).forEach(catNombre => {
+      grupos[catNombre].productos.sort((a, b) => b.precio - a.precio);
+    });
+    
+    // Convertir a array, ordenar categorías alfabéticamente y volver a objeto
+    const gruposOrdenados = Object.keys(grupos)
+      .sort((a, b) => a.localeCompare(b))
+      .reduce((acc, key) => {
+        acc[key] = grupos[key];
+        return acc;
+      }, {} as Record<string, GrupoProductos>);
+    
+    return gruposOrdenados;
   }, [productosFiltrados]);
 
   if (loading) {

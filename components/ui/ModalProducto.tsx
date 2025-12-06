@@ -148,29 +148,44 @@ export default function ModalProducto({
 
         if (updateError) throw updateError;
         } else {
-        // Modo CREAR - INSERT
-        const { error: insertError } = await supabase
-            .from('productos')
-            .insert([
-            {
-                nombre: nombre.trim(),
-                precio: Number(precio),
-                categoria_id: categoriaId,
-                descripcion: descripcion.trim() || null,
-                activo: true
-            }
-            ]);
+          // Modo CREAR - INSERT
+          // Obtener negocio_id del usuario actual
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error('Usuario no autenticado');
 
-        if (insertError) throw insertError;
-        }
+          const { data: usuarioData, error: usuarioError } = await supabase
+            .from('usuarios')
+            .select('negocio_id')
+            .eq('auth_user_id', user.id)
+            .single();
+
+          if (usuarioError || !usuarioData) throw new Error('No se pudo obtener el negocio del usuario');
+
+          const { error: insertError } = await supabase
+              .from('productos')
+              .insert([
+              {
+                  nombre: nombre.trim(),
+                  precio: Number(precio),
+                  categoria_id: categoriaId,
+                  descripcion: descripcion.trim() || null,
+                  negocio_id: usuarioData.negocio_id,  // 🔥 ESTA ES LA LÍNEA NUEVA
+                  activo: true
+              }
+              ]);
+
+          if (insertError) throw insertError;
+          }
 
         // Éxito
         limpiarFormulario();
         onProductoCreado();
         onOpenChange(false);
     } catch (err: any) {
-        console.error('Error al guardar producto:', err);
-        setError('Error al guardar el producto. Intenta de nuevo.');
+    console.error('Error completo:', err);
+    console.error('Error mensaje:', err?.message);
+    console.error('Error detalles:', err?.details);
+    setError(err?.message || 'Error al guardar el producto. Intenta de nuevo.');
     } finally {
         setLoading(false);
     }
