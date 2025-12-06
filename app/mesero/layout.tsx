@@ -68,8 +68,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const links = [
-    { href: "/mesero", label: "Menú", icon: UtensilsCrossed },
-    { href: "/mesero/pedidos", label: "Mis Pedidos", icon: ListChecks }
+    { href: "/mesero/menumesero", label: "Menú", icon: UtensilsCrossed },
+    { href: "/mesero/mispedidos", label: "Mis Pedidos", icon: ListChecks }
   ];
 
   return (

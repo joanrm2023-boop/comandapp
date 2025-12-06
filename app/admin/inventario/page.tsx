@@ -669,28 +669,35 @@ export default function InventarioPage() {
                               )}
                             </div>
                             
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mt-2">
-                              <div>
-                                <span className="text-zinc-500">Stock actual:</span>
-                                <p className={`font-bold ${stockBajo ? 'text-red-600' : 'text-orange-600'}`}>
-                                  {insumo.stock_actual} {insumo.unidad_medida}
-                                </p>
+                            <div className="space-y-2 text-sm mt-2">
+                              {/* Primera fila: Stock */}
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="text-zinc-500 text-xs block mb-1">Stock actual:</span>
+                                  <p className={`font-bold ${stockBajo ? 'text-red-600' : 'text-orange-600'}`}>
+                                    {insumo.stock_actual} {insumo.unidad_medida}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-500 text-xs block mb-1">Stock mínimo:</span>
+                                  <p className="font-bold text-zinc-900">
+                                    {insumo.stock_minimo} {insumo.unidad_medida}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-zinc-500">Stock mínimo:</span>
-                                <p className="font-bold text-zinc-900">
-                                  {insumo.stock_minimo} {insumo.unidad_medida}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-zinc-500">Precio:</span>
-                                <p className="font-bold text-zinc-900">
-                                  ${insumo.precio_compra.toLocaleString()}/{insumo.unidad_medida}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-zinc-500">Categoría:</span>
-                                <p className="font-bold text-zinc-900">{insumo.categoria}</p>
+                              
+                              {/* Segunda fila: Precio y Categoría */}
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="min-w-0">
+                                  <span className="text-zinc-500 text-xs block mb-1">Precio:</span>
+                                  <p className="font-bold text-zinc-900 text-xs break-all">
+                                    ${insumo.precio_compra.toLocaleString()}/{insumo.unidad_medida}
+                                  </p>
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-zinc-500 text-xs block mb-1">Categoría:</span>
+                                  <p className="font-bold text-zinc-900 text-xs break-words">{insumo.categoria}</p>
+                                </div>
                               </div>
                             </div>
 

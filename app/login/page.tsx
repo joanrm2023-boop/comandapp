@@ -152,16 +152,16 @@ export default function LoginPage() {
       console.log('7️⃣ Redirigiendo según rol:', usuarioData.rol);
 
       if (usuarioData.rol === 'admin') {
-        console.log('✅ Redirigiendo a /admin/menu');
-        window.location.href = '/admin/menu';
-      } else if (usuarioData.rol === 'mesero') {
-        console.log('✅ Redirigiendo a /mesero');
-        window.location.href = '/mesero';
-      } else {
-        console.error('❌ Rol no válido:', usuarioData.rol);
-        setError('Rol de usuario no válido');
-        await supabase.auth.signOut();
-      }
+          console.log('✅ Redirigiendo a /admin/menu');
+          window.location.href = '/admin/menu';
+        } else if (usuarioData.rol === 'mesero') {
+          console.log('✅ Redirigiendo a /mesero/menumesero');
+          window.location.href = '/mesero/menumesero';
+        } else {
+          console.error('❌ Rol no válido:', usuarioData.rol);
+          setError('Rol de usuario no válido');
+          await supabase.auth.signOut();
+        }
 
     } catch (err: any) {
       
