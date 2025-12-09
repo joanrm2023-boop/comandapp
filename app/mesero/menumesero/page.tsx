@@ -65,7 +65,8 @@ export default function MeseroPage() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [medioPago, setMedioPago] = useState<string>("");
-  const [nombreCliente, setNombreCliente] = useState<string>(""); // 🆕 NOMBRE CLIENTE
+  const [nombreCliente, setNombreCliente] = useState<string>(""); 
+  const [notasPedido, setNotasPedido] = useState<string>(""); 
   
   // Carrito de pedido
   const [pedido, setPedido] = useState<ItemPedido[]>([]);
@@ -448,7 +449,8 @@ export default function MeseroPage() {
         es_domicilio: esDomicilio(),
         direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
         valor_domicilio: costoEnvio,
-        medio_pago: medioPago
+        medio_pago: medioPago,
+        notas: notasPedido.trim() || null
       };
 
       console.log('📝 Creando pedido con datos:', datosAPedir);
@@ -516,6 +518,7 @@ export default function MeseroPage() {
       setMostrarResumen(false);
       setMedioPago("");
       setNombreCliente(""); // 🆕 LIMPIAR NOMBRE CLIENTE
+      setNotasPedido("");
 
       // Mostrar notificación
       toast.success('¡Pedido enviado exitosamente! 🎉', {
@@ -818,6 +821,20 @@ export default function MeseroPage() {
                   className="w-full h-11 bg-white/95 text-gray-900 border-0 font-semibold shadow-lg hover:bg-white placeholder:text-gray-500"
                 />
               </div>
+
+              {/* Campo de notas del pedido */}
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
+                <label className="text-sm font-medium block mb-2 flex items-center gap-2">
+                  <StickyNote className="w-4 h-4" />
+                  Notas del pedido (opcional):
+                </label>
+                <Textarea
+                  placeholder="Ej: Telefono, Cliente pidió que llegue rápido, "
+                  value={notasPedido}
+                  onChange={(e) => setNotasPedido(e.target.value)}
+                  className="w-full bg-white/95 text-gray-900 border-0 shadow-lg hover:bg-white placeholder:text-gray-500 min-h-[80px] resize-none"
+                />
+              </div>
             </CardHeader>
 
             {/* Body oscuro con lista de productos */}
@@ -884,6 +901,7 @@ export default function MeseroPage() {
                     setMostrarResumen(false);
                     setMedioPago("");
                     setNombreCliente(""); // 🆕 LIMPIAR NOMBRE CLIENTE
+                    setNotasPedido("");
                   }}
                 >
                   <X className="w-4 h-4 mr-2" />
