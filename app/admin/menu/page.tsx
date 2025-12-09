@@ -512,15 +512,15 @@ export default function MenuPage() {
       </div>
 
       {/* Modal de Categoría */}
-      <ModalCategoria 
-        open={modalCategoriaOpen || !!categoriaAEditar}
-        onOpenChange={(open) => {
-          setModalCategoriaOpen(open);
-          if (!open) setCategoriaAEditar(null);
-        }}
-        onCategoriaCreada={recargarCategorias}
-        categoriaAEditar={categoriaAEditar}
-      />
+        <ModalCategoria 
+          open={modalCategoriaOpen || !!categoriaAEditar}
+          onOpenChange={(open) => {
+            setModalCategoriaOpen(open);
+            if (!open) setCategoriaAEditar(null);
+          }}
+          onCategoriaCreada={cargarDatos}
+          categoriaAEditar={categoriaAEditar}
+        />
 
       {/* Modal de Producto */}
       <ModalProducto 
