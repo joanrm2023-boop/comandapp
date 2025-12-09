@@ -152,6 +152,56 @@ export default function VentasMeseroPage() {
     cargarVentas();
   }, [filtroFecha, fechaInicio, fechaFin]);
 
+  useEffect(() => {
+  console.log('🟢 MESERO: Configurando Realtime para impresión');
+  
+  const setupRealtime = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: usuarioData } = await supabase
+      .from('usuarios')
+      .select('negocio_id')
+      .eq('auth_user_id', user.id)
+      .single();
+
+    if (!usuarioData) return;
+
+    const negocioId = usuarioData.negocio_id;
+
+    // 🔥 Escuchar UPDATES en pedidos (cuando se agregan productos)
+    const subscription = supabase
+      .channel('mesero-pedidos-updates')
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', // 👈 Escuchar UPDATES, no INSERT
+          schema: 'public', 
+          table: 'pedidos',
+          filter: `negocio_id=eq.${negocioId}`
+        },
+        (payload) => {
+          console.log('🟢 MESERO: Pedido actualizado:', payload.new);
+          
+          // Solo imprimir si se agregaron productos (si cambió el total)
+          if (payload.old.total !== payload.new.total) {
+            console.log('🟢 MESERO: Total cambió, reimprimiendo...');
+            imprimirPedidoAutomatico(payload.new.id);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('🟢 MESERO: Estado Realtime:', status);
+      });
+
+    return () => {
+      console.log('🟢 MESERO: Limpiando suscripción Realtime');
+      subscription.unsubscribe();
+    };
+  };
+
+  setupRealtime();
+}, []);
+
   const cargarVentas = async () => {
     try {
       setLoading(true);
@@ -417,7 +467,6 @@ export default function VentasMeseroPage() {
         .select(`
           *,
           mesas (numero),
-          usuarios (nombre),
           clientes (nombre),
           detalle_pedidos (
             cantidad,
@@ -427,6 +476,17 @@ export default function VentasMeseroPage() {
         `)
         .eq('id', pedidoId)
         .single();
+
+      // 🆕 Cargar mesero por separado
+      if (pedido && pedido.mesero_id) {
+        const { data: meseroData } = await supabase
+          .from('usuarios')
+          .select('nombre')
+          .eq('id', pedido.mesero_id)
+          .single();
+        
+        pedido.usuarios = meseroData;
+      }
 
       if (!pedido) return false;
 
@@ -511,6 +571,113 @@ export default function VentasMeseroPage() {
     }
   };
 
+  const imprimirPedidoAutomatico = async (pedidoId: string) => {
+    try {
+      console.log('🖨️ MESERO: Imprimiendo pedido automáticamente:', pedidoId);
+      
+      // Obtener datos completos del pedido
+      const { data: pedido, error } = await supabase
+        .from('pedidos')
+        .select(`
+          *,
+          negocio_id,
+          mesas (numero),
+          clientes (nombre),
+          detalle_pedidos (
+            cantidad,
+            notas,
+            productos (nombre, precio)
+          )
+        `)
+        .eq('id', pedidoId)
+        .single();
+
+      if (error || !pedido) {
+        console.error('❌ MESERO: Error obteniendo pedido:', error);
+        return;
+      }
+
+      // 🆕 Cargar mesero por separado
+      if (pedido.mesero_id) {
+        const { data: meseroData } = await supabase
+          .from('usuarios')
+          .select('nombre')
+          .eq('id', pedido.mesero_id)
+          .single();
+        
+        pedido.usuarios = meseroData;
+      }
+
+      // Obtener datos del negocio
+      const { data: negocioData } = await supabase
+        .from('negocios')
+        .select('nombre, telefono, direccion')
+        .eq('id', pedido.negocio_id)
+        .single();
+
+      const numeroPedido = pedido.numero_pedido || pedido.id.slice(-6).toUpperCase();
+
+      // Formatear fecha
+      const ahora = new Date(pedido.created_at);
+      const dia = ahora.getDate().toString().padStart(2, '0');
+      const mes = (ahora.getMonth() + 1).toString().padStart(2, '0');
+      const anio = ahora.getFullYear();
+      let hora = ahora.getHours();
+      const minutos = ahora.getMinutes().toString().padStart(2, '0');
+      const ampm = hora >= 12 ? 'PM' : 'AM';
+      hora = hora % 12 || 12;
+      const fechaFormateada = `${dia}/${mes}/${anio}, ${hora}:${minutos} ${ampm}`;
+
+      const datosImpresion = {
+        id: pedido.id,
+        numero: numeroPedido,
+        mesa: pedido.mesas?.numero || 'N/A',
+        mesero: pedido.usuarios?.nombre || 'N/A',
+        cliente: pedido.clientes?.nombre || 'N/A',
+        fecha: fechaFormateada,
+        items: pedido.detalle_pedidos.map((d: any) => ({
+          cantidad: d.cantidad,
+          nombre: d.productos.nombre,
+          precio: d.productos.precio,
+          notas: d.notas
+        })),
+        total: pedido.total,
+        es_domicilio: pedido.es_domicilio,
+        direccion: pedido.direccion_domicilio,
+        valor_domicilio: pedido.valor_domicilio,
+        medio_pago: pedido.medio_pago,
+        notas: pedido.notas || null
+      };
+
+      console.log('🖨️ MESERO: Enviando a imprimir...');
+
+      const response = await fetch('http://localhost:3001/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          pedido: datosImpresion,
+          negocio: {
+            nombre: negocioData?.nombre || 'DishHub',
+            telefono: negocioData?.telefono || null,
+            direccion: negocioData?.direccion || null
+          }
+        })
+      });
+
+      const resultado = await response.json();
+      
+      if (resultado.success) {
+        console.log('✅ MESERO: Pedido impreso automáticamente');
+      } else {
+        console.error('⚠️ MESERO: Error al imprimir:', resultado.error);
+      }
+      
+    } catch (error) {
+      console.error('❌ MESERO: Error en impresión automática:', error);
+    }
+  };
+
+ 
   // Productos filtrados en el modal
   const productosFiltradosModal = useMemo(() => {
     return productos.filter((p) => {
