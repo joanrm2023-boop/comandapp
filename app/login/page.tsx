@@ -149,15 +149,19 @@ export default function LoginPage() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // 5. Redirigir según el rol
-      console.log('7️⃣ Redirigiendo según rol:', usuarioData.rol);
+      console.log('7️⃣ Guardando rol en cookie:', usuarioData.rol);
+        document.cookie = `user-role=${usuarioData.rol}; path=/; max-age=86400`; // 24 horas
 
-      if (usuarioData.rol === 'admin') {
+        // 6. Redirigir según el rol
+        await new Promise(resolve => setTimeout(resolve, 100)); // Esperar a que se guarde la cookie
+
+        if (usuarioData.rol === 'admin') {
           console.log('✅ Redirigiendo a /admin/menu');
           window.location.href = '/admin/menu';
         } else if (usuarioData.rol === 'mesero') {
           console.log('✅ Redirigiendo a /mesero/menumesero');
           window.location.href = '/mesero/menumesero';
-        } else {
+        }else {
           console.error('❌ Rol no válido:', usuarioData.rol);
           setError('Rol de usuario no válido');
           await supabase.auth.signOut();

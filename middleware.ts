@@ -1,104 +1,71 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
   const { pathname } = req.nextUrl
 
-  console.log('🔒 Middleware ejecutándose en:', pathname)
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('🔒 MIDDLEWARE ejecutándose en:', pathname)
 
-  // 1. Rutas públicas (no requieren autenticación)
-  const rutasPublicas = ['/login', '/cambio-contrasena', '/']
-  const esRutaPublica = rutasPublicas.includes(pathname)
+  // Solo aplicar en rutas protegidas
+  if (!pathname.startsWith('/admin') && !pathname.startsWith('/mesero')) {
+    console.log('✅ Ruta no protegida, permitiendo acceso')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    return NextResponse.next()
+  }
 
-  // 2. Verificar sesión de Supabase
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // Buscar cookies de Supabase
+  const cookies = req.cookies.getAll()
+  console.log('🍪 Cookies encontradas:', cookies.length)
 
-  console.log('🔐 ¿Tiene sesión?:', !!session)
+  const hasAuth = cookies.some(cookie => 
+    cookie.name.includes('auth-token') || 
+    cookie.name.includes('access-token') ||
+    cookie.name.startsWith('sb-')
+  )
 
-  // 3. Si NO hay sesión y NO es ruta pública → Login
-  if (!session && !esRutaPublica) {
-    console.log('❌ Sin sesión, redirigiendo a /login desde:', pathname)
+  console.log('🔐 ¿Tiene auth?:', hasAuth)
+
+  if (!hasAuth) {
+    console.log('❌ Sin auth, redirigiendo a /login')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // 4. Si hay sesión y está en /login → Redirigir según rol
-  if (session && pathname === '/login') {
-    const { data: usuario } = await supabase
-      .from('usuarios')
-      .select('rol')
-      .eq('auth_user_id', session.user.id)
-      .eq('activo', true)
-      .single()
+  // 🆕 VALIDAR ROL desde cookie personalizada
+  const rolCookie = req.cookies.get('user-role')
+  console.log('👤 Rol detectado:', rolCookie?.value || 'NO ENCONTRADO')
 
-    if (usuario?.rol === 'admin') {
-      console.log('✅ Admin logueado, redirigiendo a /admin/menu')
-      return NextResponse.redirect(new URL('/admin/menu', req.url))
-    } else if (usuario?.rol === 'mesero') {
-      console.log('✅ Mesero logueado, redirigiendo a /mesero/menumesero')
-      return NextResponse.redirect(new URL('/mesero/menumesero', req.url))
-    }
+  // Si no hay cookie de rol, permitir acceso (primera vez después del login)
+  if (!rolCookie) {
+    console.log('⚠️ Cookie de rol no encontrada, permitiendo acceso (se creará en el cliente)')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    return NextResponse.next()
   }
 
-  // 5. Si es ruta pública, permitir acceso
-  if (esRutaPublica) {
-    console.log('✅ Ruta pública, permitiendo acceso a:', pathname)
-    return res
-  }
+  const rol = rolCookie.value
 
-  // 6. 🔥 VALIDACIÓN DE ROL (lo más importante)
-  const { data: usuario, error } = await supabase
-    .from('usuarios')
-    .select('rol, activo')
-    .eq('auth_user_id', session!.user.id)
-    .single()
-
-  // Si no se encuentra el usuario o hay error
-  if (error || !usuario) {
-    console.log('❌ Usuario no encontrado en BD, cerrando sesión')
-    await supabase.auth.signOut()
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
-
-  // Si el usuario está inactivo
-  if (!usuario.activo) {
-    console.log('❌ Usuario inactivo, cerrando sesión')
-    await supabase.auth.signOut()
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
-
-  console.log('👤 Usuario:', usuario.rol, '| Ruta:', pathname)
-
-  // 7. 🚨 BLOQUEAR meseros en rutas de admin
-  if (pathname.startsWith('/admin') && usuario.rol === 'mesero') {
-    console.log('🚨 BLOQUEADO: Mesero intentó acceder a', pathname)
+  // 🚨 Validar acceso según rol
+  if (pathname.startsWith('/admin') && rol !== 'admin') {
+    console.log('🚨 BLOQUEADO: Usuario con rol', rol, 'intentó acceder a admin')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.redirect(new URL('/mesero/menumesero', req.url))
   }
 
-  // 8. 🔄 Redirigir admins que van a rutas de mesero (opcional)
-  if (pathname.startsWith('/mesero') && usuario.rol === 'admin') {
-    console.log('⚠️ Admin en ruta de mesero, redirigiendo a /admin/menu')
+  if (pathname.startsWith('/mesero') && rol !== 'mesero') {
+    console.log('⚠️ Admin intentó acceder a ruta mesero, redirigiendo')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.redirect(new URL('/admin/menu', req.url))
   }
 
-  // 9. ✅ Si pasa todas las validaciones, permitir acceso
-  console.log('✅ Acceso permitido a:', pathname)
-  return res
+  console.log('✅ ACCESO PERMITIDO - Rol:', rol)
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  return NextResponse.next()
 }
 
 export const config = {
   matcher: [
-    /*
-     * Proteger todas las rutas EXCEPTO:
-     * - _next/static (archivos estáticos)
-     * - _next/image (optimización de imágenes)
-     * - favicon.ico
-     * - Archivos públicos (.png, .jpg, .svg, etc.)
-     */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+    '/admin/:path*',
+    '/mesero/:path*'
+  ]
 }
