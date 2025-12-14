@@ -75,14 +75,11 @@ interface GrupoProductos {
   };
 }
 
+// 🆕 CAMBIO 1: Modificar interfaz de estadísticas (solo visual)
 interface EstadisticasVentas {
-  totalVentas: number;
   cantidadPedidos: number;
-  promedioVenta: number;
-  ventasEfectivo: number;
-  ventasNequi: number;
-  ventasDaviplata: number;
-  ventasBold: number;
+  totalItems: number;
+  promedioItems: number;
 }
 
 export default function VentasMeseroPage() {
@@ -153,60 +150,58 @@ export default function VentasMeseroPage() {
   }, [filtroFecha, fechaInicio, fechaFin]);
 
   useEffect(() => {
-  console.log('🟢 MESERO: Configurando Realtime para impresión');
-  
-  const setupRealtime = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    console.log('🟢 MESERO: Configurando Realtime para impresión');
+    
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data: usuarioData } = await supabase
-      .from('usuarios')
-      .select('negocio_id')
-      .eq('auth_user_id', user.id)
-      .single();
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
 
-    if (!usuarioData) return;
+      if (!usuarioData) return;
 
-    const negocioId = usuarioData.negocio_id;
+      const negocioId = usuarioData.negocio_id;
 
-    // 🔥 Escuchar UPDATES en pedidos (cuando se agregan productos)
-    const subscription = supabase
-      .channel('mesero-pedidos-updates')
-      .on('postgres_changes', 
-        { 
-          event: 'UPDATE', // 👈 Escuchar UPDATES, no INSERT
-          schema: 'public', 
-          table: 'pedidos',
-          filter: `negocio_id=eq.${negocioId}`
-        },
-        (payload) => {
-          console.log('🟢 MESERO: Pedido actualizado:', payload.new);
-          
-          // Solo imprimir si se agregaron productos (si cambió el total)
-          if (payload.old.total !== payload.new.total) {
-            console.log('🟢 MESERO: Total cambió, reimprimiendo...');
-            imprimirPedidoAutomatico(payload.new.id);
+      // 🔥 Escuchar UPDATES en pedidos (cuando se agregan productos)
+      const subscription = supabase
+        .channel('mesero-pedidos-updates')
+        .on('postgres_changes', 
+          { 
+            event: 'UPDATE',
+            schema: 'public', 
+            table: 'pedidos',
+            filter: `negocio_id=eq.${negocioId}`
+          },
+          (payload) => {
+            console.log('🟢 MESERO: Pedido actualizado:', payload.new);
+            
+            if (payload.old.total !== payload.new.total) {
+              console.log('🟢 MESERO: Total cambió, reimprimiendo...');
+              imprimirPedidoAutomatico(payload.new.id);
+            }
           }
-        }
-      )
-      .subscribe((status) => {
-        console.log('🟢 MESERO: Estado Realtime:', status);
-      });
+        )
+        .subscribe((status) => {
+          console.log('🟢 MESERO: Estado Realtime:', status);
+        });
 
-    return () => {
-      console.log('🟢 MESERO: Limpiando suscripción Realtime');
-      subscription.unsubscribe();
+      return () => {
+        console.log('🟢 MESERO: Limpiando suscripción Realtime');
+        subscription.unsubscribe();
+      };
     };
-  };
 
-  setupRealtime();
-}, []);
+    setupRealtime();
+  }, []);
 
   const cargarVentas = async () => {
     try {
       setLoading(true);
 
-      // Obtener usuario autenticado
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -214,7 +209,6 @@ export default function VentasMeseroPage() {
         return;
       }
 
-      // Buscar datos del mesero en tabla usuarios
       const { data: usuarioData, error: usuarioError } = await supabase
         .from('usuarios')
         .select('id, nombre, negocio_id')
@@ -230,7 +224,6 @@ export default function VentasMeseroPage() {
       setNombreMesero(usuarioData.nombre);
       const { inicio, fin } = obtenerRangoFechas();
 
-      // Cargar pedidos VENDIDOS del mesero
       const { data, error } = await supabase
         .from('pedidos')
         .select(`
@@ -260,11 +253,9 @@ export default function VentasMeseroPage() {
     }
   };
 
-  // 🆕 Abrir modal para agregar productos
   const abrirModalAgregarProductos = async (pedido: Pedido) => {
     setPedidoSeleccionado(pedido);
     
-    // Cargar productos si no están cargados
     if (productos.length === 0) {
       await cargarMenuCompleto();
     }
@@ -272,7 +263,6 @@ export default function VentasMeseroPage() {
     setModalAgregarOpen(true);
   };
 
-  // 🆕 Cargar menú completo
   const cargarMenuCompleto = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -286,7 +276,6 @@ export default function VentasMeseroPage() {
 
       if (!usuarioData) return;
 
-      // Cargar productos
       const { data: productosData } = await supabase
         .from('productos')
         .select(`
@@ -301,7 +290,6 @@ export default function VentasMeseroPage() {
         .eq('negocio_id', usuarioData.negocio_id)
         .order('nombre');
 
-      // Cargar categorías
       const { data: categoriasData } = await supabase
         .from('categorias')
         .select('*')
@@ -316,11 +304,9 @@ export default function VentasMeseroPage() {
     }
   };
 
-  // 🆕 Abrir modal de notas para un producto
   const agregarProductoConNotas = (producto: Producto) => {
     setProductoSeleccionado(producto);
     
-    // Si ya existe en productos adicionales, cargar su cantidad y notas
     const itemExistente = productosAdicionales.find(item => item.producto.id === producto.id);
     if (itemExistente) {
       setCantidadTemp(itemExistente.cantidad);
@@ -333,7 +319,6 @@ export default function VentasMeseroPage() {
     setModalNotasOpen(true);
   };
 
-  // 🆕 Confirmar producto con notas
   const confirmarProductoConNotas = () => {
     if (!productoSeleccionado || cantidadTemp <= 0) return;
 
@@ -341,7 +326,6 @@ export default function VentasMeseroPage() {
       const existe = prev.find(item => item.producto.id === productoSeleccionado.id);
       
       if (existe) {
-        // Actualizar existente
         return prev.map(item =>
           item.producto.id === productoSeleccionado.id
             ? { ...item, cantidad: cantidadTemp, notas: notasTemp }
@@ -349,7 +333,6 @@ export default function VentasMeseroPage() {
         );
       }
       
-      // Agregar nuevo
       return [...prev, { 
         producto: productoSeleccionado, 
         cantidad: cantidadTemp,
@@ -357,14 +340,12 @@ export default function VentasMeseroPage() {
       }];
     });
 
-    // Cerrar modal
     setModalNotasOpen(false);
     setProductoSeleccionado(null);
     setCantidadTemp(1);
     setNotasTemp("");
   };
 
-  // 🆕 Agregar productos al pedido existente
   const agregarProductosAlPedido = async () => {
     if (!pedidoSeleccionado || productosAdicionales.length === 0) {
       toast.error('Debes seleccionar al menos un producto');
@@ -375,23 +356,22 @@ export default function VentasMeseroPage() {
       setAgregando(true);
 
       const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          setAgregando(false);
-          return;
-        }
+      if (!user) {
+        setAgregando(false);
+        return;
+      }
 
-        const { data: usuarioData } = await supabase
-          .from('usuarios')
-          .select('id, nombre')
-          .eq('auth_user_id', user.id)
-          .single();
+      const { data: usuarioData } = await supabase
+        .from('usuarios')
+        .select('id, nombre')
+        .eq('auth_user_id', user.id)
+        .single();
 
-        if (!usuarioData) {
-          setAgregando(false);
-          return;
-        }
+      if (!usuarioData) {
+        setAgregando(false);
+        return;
+      }
 
-      // Insertar nuevos detalles
       const nuevosDetalles = productosAdicionales.map(item => ({
         pedido_id: pedidoSeleccionado.id,
         producto_id: item.producto.id,
@@ -407,7 +387,6 @@ export default function VentasMeseroPage() {
 
       if (errorDetalles) throw errorDetalles;
 
-      // Calcular nuevo total
       const totalAdicional = productosAdicionales.reduce(
         (sum, item) => sum + (item.producto.precio * item.cantidad), 
         0
@@ -415,29 +394,24 @@ export default function VentasMeseroPage() {
 
       const nuevoTotal = pedidoSeleccionado.total + totalAdicional;
 
-      // Actualizar total del pedido
-      // Actualizar total del pedido
-        const { error: errorUpdate } = await supabase
-          .from('pedidos')
-          .update({ 
-            total: nuevoTotal,
-            mesero_modificado_id: usuarioData.id  // 👈 AGREGAR ESTA LÍNEA
-          })
-          .eq('id', pedidoSeleccionado.id);
+      const { error: errorUpdate } = await supabase
+        .from('pedidos')
+        .update({ 
+          total: nuevoTotal,
+          mesero_modificado_id: usuarioData.id
+        })
+        .eq('id', pedidoSeleccionado.id);
 
       if (errorUpdate) throw errorUpdate;
 
-      // 🖨️ REIMPRIMIR con productos nuevos (opcional si hay impresora)
       const impresoraDisponible = await reimprimirPedidoConNuevos(pedidoSeleccionado.id);
 
-      // Limpiar y recargar
       setProductosAdicionales([]);
       setModalAgregarOpen(false);
       setPedidoSeleccionado(null);
       setBusquedaProductos("");
       await cargarVentas();
 
-      // Mensaje según disponibilidad de impresora
       if (impresoraDisponible) {
         toast.success('✅ Productos agregados e impresión enviada', {
           duration: 4000
@@ -456,12 +430,10 @@ export default function VentasMeseroPage() {
     }
   };
 
-  // 🆕 Reimprimir pedido con productos nuevos
   const reimprimirPedidoConNuevos = async (pedidoId: string): Promise<boolean> => {
     try {
       console.log('🔁 Reimprimiendo pedido con productos nuevos:', pedidoId);
 
-      // Obtener datos ACTUALIZADOS del pedido
       const { data: pedido } = await supabase
         .from('pedidos')
         .select(`
@@ -477,7 +449,6 @@ export default function VentasMeseroPage() {
         .eq('id', pedidoId)
         .single();
 
-      // 🆕 Cargar mesero por separado
       if (pedido && pedido.mesero_id) {
         const { data: meseroData } = await supabase
           .from('usuarios')
@@ -490,14 +461,12 @@ export default function VentasMeseroPage() {
 
       if (!pedido) return false;
 
-      // Obtener negocio
       const { data: negocioData } = await supabase
         .from('negocios')
         .select('nombre, telefono, direccion')
         .eq('id', pedido.negocio_id)
         .single();
 
-      // Formatear datos para impresión
       const numeroPedido = pedido.numero_pedido || pedido.id.slice(-6).toUpperCase();
       
       const ahora = new Date(pedido.created_at);
@@ -531,7 +500,6 @@ export default function VentasMeseroPage() {
         notas: pedido.notas || null
       };
 
-      // Intentar enviar a imprimir con timeout de 2 segundos
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
 
@@ -561,7 +529,6 @@ export default function VentasMeseroPage() {
         return false;
       }
     } catch (error: any) {
-      // No mostrar error si es timeout o conexión rechazada (impresora no disponible)
       if (error.name === 'AbortError' || error.message?.includes('fetch')) {
         console.log('⚠️ Servidor de impresión no disponible');
         return false;
@@ -575,7 +542,6 @@ export default function VentasMeseroPage() {
     try {
       console.log('🖨️ MESERO: Imprimiendo pedido automáticamente:', pedidoId);
       
-      // Obtener datos completos del pedido
       const { data: pedido, error } = await supabase
         .from('pedidos')
         .select(`
@@ -597,7 +563,6 @@ export default function VentasMeseroPage() {
         return;
       }
 
-      // 🆕 Cargar mesero por separado
       if (pedido.mesero_id) {
         const { data: meseroData } = await supabase
           .from('usuarios')
@@ -608,7 +573,6 @@ export default function VentasMeseroPage() {
         pedido.usuarios = meseroData;
       }
 
-      // Obtener datos del negocio
       const { data: negocioData } = await supabase
         .from('negocios')
         .select('nombre, telefono, direccion')
@@ -617,7 +581,6 @@ export default function VentasMeseroPage() {
 
       const numeroPedido = pedido.numero_pedido || pedido.id.slice(-6).toUpperCase();
 
-      // Formatear fecha
       const ahora = new Date(pedido.created_at);
       const dia = ahora.getDate().toString().padStart(2, '0');
       const mes = (ahora.getMonth() + 1).toString().padStart(2, '0');
@@ -677,8 +640,6 @@ export default function VentasMeseroPage() {
     }
   };
 
- 
-  // Productos filtrados en el modal
   const productosFiltradosModal = useMemo(() => {
     return productos.filter((p) => {
       const busquedaLower = busquedaProductos.toLowerCase();
@@ -689,7 +650,6 @@ export default function VentasMeseroPage() {
     });
   }, [busquedaProductos, productos]);
 
-  // Productos agrupados por categoría
   const productosAgrupadosModal = useMemo(() => {
     const grupos: Record<string, GrupoProductos> = {};
     
@@ -709,12 +669,10 @@ export default function VentasMeseroPage() {
       grupos[catNombre].productos.push(producto);
     });
     
-    // Ordenar productos dentro de cada categoría por precio (mayor a menor)
     Object.keys(grupos).forEach(catNombre => {
       grupos[catNombre].productos.sort((a, b) => b.precio - a.precio);
     });
     
-    // Ordenar categorías alfabéticamente
     const gruposOrdenados = Object.keys(grupos)
       .sort((a, b) => a.localeCompare(b))
       .reduce((acc, key) => {
@@ -725,7 +683,6 @@ export default function VentasMeseroPage() {
     return gruposOrdenados;
   }, [productosFiltradosModal]);
 
-  // Función para determinar el tipo de pedido
   const getTipoPedido = (pedido: Pedido): 'mesa' | 'domicilio' | 'para_llevar' => {
     const mesaNumero = pedido.mesas.numero.toLowerCase();
     
@@ -734,7 +691,6 @@ export default function VentasMeseroPage() {
     return 'mesa';
   };
 
-  // Filtrar pedidos según búsqueda
   const pedidosFiltrados = pedidos.filter(pedido => {
     if (busqueda.trim()) {
       const searchLower = busqueda.toLowerCase();
@@ -751,36 +707,23 @@ export default function VentasMeseroPage() {
     return true;
   });
 
-  // Calcular estadísticas
+  // 🆕 CAMBIO 2: Calcular estadísticas SIN PRECIOS (solo cantidades)
   const estadisticas: EstadisticasVentas = useMemo(() => {
-    const totalVentas = pedidosFiltrados.reduce((sum, p) => sum + p.total, 0);
     const cantidadPedidos = pedidosFiltrados.length;
-    const promedioVenta = cantidadPedidos > 0 ? totalVentas / cantidadPedidos : 0;
-
-    const ventasEfectivo = pedidosFiltrados
-      .filter(p => p.medio_pago === 'efectivo')
-      .reduce((sum, p) => sum + p.total, 0);
-
-    const ventasNequi = pedidosFiltrados
-      .filter(p => p.medio_pago === 'nequi')
-      .reduce((sum, p) => sum + p.total, 0);
-
-    const ventasDaviplata = pedidosFiltrados
-      .filter(p => p.medio_pago === 'daviplata')
-      .reduce((sum, p) => sum + p.total, 0);
-
-    const ventasBold = pedidosFiltrados
-      .filter(p => p.medio_pago === 'bold')
-      .reduce((sum, p) => sum + p.total, 0);
+    
+    // Calcular total de items vendidos
+    const totalItems = pedidosFiltrados.reduce((sum, pedido) => {
+      return sum + pedido.detalle_pedidos.reduce((itemSum, detalle) => {
+        return itemSum + detalle.cantidad;
+      }, 0);
+    }, 0);
+    
+    const promedioItems = cantidadPedidos > 0 ? totalItems / cantidadPedidos : 0;
 
     return {
-      totalVentas,
       cantidadPedidos,
-      promedioVenta,
-      ventasEfectivo,
-      ventasNequi,
-      ventasDaviplata,
-      ventasBold
+      totalItems,
+      promedioItems
     };
   }, [pedidosFiltrados]);
 
@@ -799,7 +742,6 @@ export default function VentasMeseroPage() {
     });
   };
 
-  // Obtener ícono según el tipo
   const getIconoTipo = (pedido: Pedido) => {
     const tipo = getTipoPedido(pedido);
     
@@ -816,7 +758,6 @@ export default function VentasMeseroPage() {
     );
   };
 
-  // Obtener color de fondo según el tipo
   const getColorFondo = (pedido: Pedido) => {
     const tipo = getTipoPedido(pedido);
     
@@ -825,7 +766,6 @@ export default function VentasMeseroPage() {
     return 'from-orange-50 to-red-50';
   };
 
-  // Obtener título según el tipo
   const getTitulo = (pedido: Pedido) => {
     const tipo = getTipoPedido(pedido);
     
@@ -834,13 +774,11 @@ export default function VentasMeseroPage() {
     return `Mesa ${pedido.mesas.numero}`;
   };
 
-  // Obtener número de pedido para mostrar
   const getNumeroPedido = (pedido: Pedido) => {
     if (pedido.numero_pedido) return `#${pedido.numero_pedido}`;
     return `#${pedido.id.slice(-6).toUpperCase()}`;
   };
 
-  // Obtener icono de medio de pago
   const getIconoMedioPago = (medioPago: string) => {
     switch (medioPago) {
       case 'efectivo': return '💵';
@@ -873,7 +811,7 @@ export default function VentasMeseroPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
-                Mis Ventas
+                Mis Pedidos
               </h1>
               <p className="text-zinc-600 text-sm">
                 {nombreMesero} - {pedidosFiltrados.length} {pedidosFiltrados.length === 1 ? 'venta' : 'ventas'}
@@ -882,31 +820,14 @@ export default function VentasMeseroPage() {
           </div>
         </div>
 
-        {/* Tarjetas de Estadísticas */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Total Ventas */}
-          <Card className="border-2 border-orange-200 shadow-lg shadow-orange-500/20">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-zinc-600 mb-1">Total Vendido</p>
-                  <p className="text-2xl font-bold text-orange-600">
-                    ${estadisticas.totalVentas.toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-gradient-to-r from-orange-500 to-red-500 p-3 rounded-xl">
-                  <DollarSign className="w-6 h-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Cantidad de Pedidos */}
+        {/* 🆕 CAMBIO 3: Tarjetas de Estadísticas SIN PRECIOS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {/* 1. Pedidos Realizados */}
           <Card className="border-2 border-blue-200 shadow-lg shadow-blue-500/20">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-zinc-600 mb-1">Pedidos</p>
+                  <p className="text-sm text-zinc-600 mb-1">Pedidos Realizados</p>
                   <p className="text-2xl font-bold text-blue-600">
                     {estadisticas.cantidadPedidos}
                   </p>
@@ -918,52 +839,36 @@ export default function VentasMeseroPage() {
             </CardContent>
           </Card>
 
-          {/* Promedio por Venta */}
-          <Card className="border-2 border-green-200 shadow-lg shadow-green-500/20">
+          {/* 2. Items Vendidos */}
+          <Card className="border-2 border-orange-200 shadow-lg shadow-orange-500/20">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-zinc-600 mb-1">Promedio</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    ${estadisticas.promedioVenta.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                  <p className="text-sm text-zinc-600 mb-1">Items Vendidos</p>
+                  <p className="text-2xl font-bold text-orange-600">
+                    {estadisticas.totalItems}
                   </p>
                 </div>
-                <div className="bg-gradient-to-r from-green-500 to-green-600 p-3 rounded-xl">
+                <div className="bg-gradient-to-r from-orange-500 to-red-500 p-3 rounded-xl">
                   <TrendingUp className="w-6 h-6 text-white" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Medios de Pago */}
-          <Card className="border-2 border-purple-200 shadow-lg shadow-purple-500/20">
+          {/* 3. Items por Pedido */}
+          <Card className="border-2 border-green-200 shadow-lg shadow-green-500/20">
             <CardContent className="p-4">
-              <p className="text-sm text-zinc-600 mb-2">Medios de Pago</p>
-              <div className="space-y-1 text-xs">
-                {estadisticas.ventasEfectivo > 0 && (
-                  <div className="flex justify-between">
-                    <span>💵 Efectivo:</span>
-                    <span className="font-semibold">${estadisticas.ventasEfectivo.toLocaleString()}</span>
-                  </div>
-                )}
-                {estadisticas.ventasNequi > 0 && (
-                  <div className="flex justify-between">
-                    <span>📱 Nequi:</span>
-                    <span className="font-semibold">${estadisticas.ventasNequi.toLocaleString()}</span>
-                  </div>
-                )}
-                {estadisticas.ventasDaviplata > 0 && (
-                  <div className="flex justify-between">
-                    <span>📲 Daviplata:</span>
-                    <span className="font-semibold">${estadisticas.ventasDaviplata.toLocaleString()}</span>
-                  </div>
-                )}
-                {estadisticas.ventasBold > 0 && (
-                  <div className="flex justify-between">
-                    <span>💳 Bold:</span>
-                    <span className="font-semibold">${estadisticas.ventasBold.toLocaleString()}</span>
-                  </div>
-                )}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-zinc-600 mb-1">Items por Pedido</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {estadisticas.promedioItems.toFixed(1)}
+                  </p>
+                </div>
+                <div className="bg-gradient-to-r from-green-500 to-green-600 p-3 rounded-xl">
+                  <Clock className="w-6 h-6 text-white" />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -972,7 +877,6 @@ export default function VentasMeseroPage() {
         {/* Filtros */}
         <div className="bg-white rounded-2xl shadow-lg p-4 mb-6 border-2 border-yellow-200">
           <div className="flex flex-col lg:flex-row gap-3">
-            {/* Barra de búsqueda */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <Input
@@ -984,7 +888,6 @@ export default function VentasMeseroPage() {
               />
             </div>
 
-            {/* Filtros de fecha */}
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -1029,7 +932,6 @@ export default function VentasMeseroPage() {
             </div>
           </div>
 
-          {/* Selector de rango personalizado */}
           {filtroFecha === "personalizado" && (
             <div className="flex flex-col sm:flex-row gap-3 mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
               <div className="flex-1">
@@ -1063,13 +965,11 @@ export default function VentasMeseroPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {pedidosFiltrados.map((pedido) => (
               <Card key={pedido.id} className="hover:shadow-xl hover:shadow-orange-500/20 transition-all duration-300 border-2 border-zinc-200 relative">
-                {/* Número de pedido */}
                 <div className="absolute top-3 right-3 bg-gradient-to-r from-orange-500 to-red-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
                   {getNumeroPedido(pedido)}
                 </div>
 
                 <CardContent className="p-6 pt-12">
-                  {/* Header del pedido */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className={`bg-gradient-to-br ${getColorFondo(pedido)} p-3 rounded-xl border border-zinc-200`}>
@@ -1091,7 +991,6 @@ export default function VentasMeseroPage() {
                     </div>
                   </div>
 
-                  {/* Cliente */}
                   {pedido.clientes && (
                     <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2 mb-3">
                       <p className="text-xs text-zinc-600">
@@ -1100,7 +999,6 @@ export default function VentasMeseroPage() {
                     </div>
                   )}
 
-                  {/* Info domicilio */}
                   {pedido.es_domicilio && pedido.direccion_domicilio && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 mb-3">
                       <p className="text-xs text-zinc-700">
@@ -1110,58 +1008,51 @@ export default function VentasMeseroPage() {
                     </div>
                   )}
 
-                  {/* Items del pedido */}
+                  {/* 🆕 CAMBIO 4: Items SIN PRECIOS */}
                   <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
                     {pedido.detalle_pedidos.map((detalle) => (
-                      <div key={detalle.id} className="flex justify-between items-start text-sm">
-                        <div className="flex-1">
-                          <span className="text-orange-600 font-semibold">{detalle.cantidad}x</span>{' '}
-                          <span className="text-zinc-900">{detalle.productos.nombre}</span>
-                          {detalle.notas && (
-                            <p className="text-xs text-orange-600 italic ml-5">
-                              • {detalle.notas}
-                            </p>
-                          )}
+                      <div key={detalle.id} className="text-sm">
+                        <div className="flex items-start gap-2">
+                          <span className="text-orange-600 font-semibold">{detalle.cantidad}x</span>
+                          <span className="text-zinc-900 flex-1">{detalle.productos.nombre}</span>
                         </div>
-                        <span className="font-semibold text-zinc-900 ml-2">
-                          ${(detalle.productos.precio * detalle.cantidad).toLocaleString()}
-                        </span>
+                        {detalle.notas && (
+                          <p className="text-xs text-orange-600 italic ml-5 mt-1">
+                            • {detalle.notas}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
 
-                  {/* Total y Medio de Pago */}
+                  {/* 🆕 CAMBIO 5: Resumen SIN PRECIOS */}
                   <div className="pt-3 border-t-2 border-zinc-200 space-y-2">
-                    {pedido.es_domicilio && pedido.valor_domicilio > 0 ? (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-sm text-zinc-600">
-                          <span>Subtotal:</span>
-                          <span>${(pedido.total - pedido.valor_domicilio).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-orange-600">
-                          <span>Domicilio:</span>
-                          <span>${pedido.valor_domicilio.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ) : null}
-                    
-                    <div className="flex justify-between items-center pt-2 border-t border-zinc-300">
-                      <span className="font-bold text-zinc-900">TOTAL:</span>
-                      <span className="text-2xl font-bold text-orange-600">
-                        ${pedido.total.toLocaleString()}
+                    {/* Cantidad de items */}
+                    <div className="flex items-center justify-between bg-blue-50 rounded-lg p-2">
+                      <span className="text-sm text-zinc-700">📋 Total de items:</span>
+                      <span className="font-bold text-blue-700">
+                        {pedido.detalle_pedidos.reduce((sum, d) => sum + d.cantidad, 0)}
                       </span>
                     </div>
 
+                    {/* Info domicilio */}
+                    {pedido.es_domicilio && (
+                      <div className="flex items-center justify-center bg-orange-50 rounded-lg p-2">
+                        <span className="text-sm text-orange-700 font-medium">
+                          🏍️ Incluye domicilio
+                        </span>
+                      </div>
+                    )}
+
                     {/* Medio de pago */}
-                    <div className="flex items-center justify-center gap-2 bg-zinc-100 rounded-lg p-2 mt-2">
+                    <div className="flex items-center justify-center gap-2 bg-zinc-100 rounded-lg p-2">
                       <span className="text-lg">{getIconoMedioPago(pedido.medio_pago)}</span>
                       <span className="text-xs font-semibold text-zinc-700 capitalize">
-                        {pedido.medio_pago}
+                        Pago: {pedido.medio_pago}
                       </span>
                     </div>
                   </div>
 
-                  {/* 🆕 Botón Agregar Productos */}
                   <div className="mt-4">
                     <Button
                       size="sm"
@@ -1191,7 +1082,7 @@ export default function VentasMeseroPage() {
         )}
       </div>
 
-      {/* 🆕 Modal Agregar Productos */}
+      {/* Modal Agregar Productos */}
       <Dialog open={modalAgregarOpen} onOpenChange={setModalAgregarOpen}>
         <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -1200,7 +1091,6 @@ export default function VentasMeseroPage() {
             </DialogTitle>
           </DialogHeader>
 
-          {/* Barra de búsqueda */}
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <Input
@@ -1211,7 +1101,6 @@ export default function VentasMeseroPage() {
             />
           </div>
 
-          {/* Lista de productos agrupados */}
           <div className="space-y-4 max-h-[50vh] overflow-y-auto">
             {Object.keys(productosAgrupadosModal).length > 0 ? (
               Object.entries(productosAgrupadosModal).map(([catNombre, grupo]) => (
@@ -1266,7 +1155,6 @@ export default function VentasMeseroPage() {
             )}
           </div>
 
-          {/* Productos seleccionados */}
           {productosAdicionales.length > 0 && (
             <div className="mt-4 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
               <h4 className="font-bold text-green-800 mb-2">
@@ -1331,7 +1219,7 @@ export default function VentasMeseroPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🆕 Modal para Agregar Notas a Producto Individual */}
+      {/* Modal Notas Producto */}
       <Dialog open={modalNotasOpen} onOpenChange={setModalNotasOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -1341,7 +1229,6 @@ export default function VentasMeseroPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Cantidad */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Cantidad</label>
               <div className="flex items-center justify-center gap-4 bg-gray-100 rounded-lg p-3">
@@ -1363,7 +1250,6 @@ export default function VentasMeseroPage() {
               </div>
             </div>
 
-            {/* Notas */}
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <StickyNote className="w-4 h-4" />
@@ -1377,7 +1263,6 @@ export default function VentasMeseroPage() {
               />
             </div>
 
-            {/* Precio total */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
               <div className="flex justify-between items-center">
                 <span className="font-medium">Subtotal:</span>
