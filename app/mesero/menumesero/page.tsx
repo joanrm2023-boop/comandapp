@@ -313,6 +313,10 @@ export default function MeseroPage() {
     return pedido.reduce((sum, item) => sum + (item.producto.precio * item.cantidad), 0);
   };
 
+  const calcularPropina = () => {
+  return calcularTotal() * 0.10;
+  };
+
   const esDomicilio = () => {
       const mesaSelec = mesas.find(m => m.id === mesaSeleccionada);
       return mesaSelec?.numero.toLowerCase().includes('domicilio');
@@ -878,12 +882,20 @@ export default function MeseroPage() {
                     </span>
                   </div>
                 )}
+
+                {/* NUEVO: Propina sugerida */}
+                <div className="flex justify-between items-center text-zinc-400">
+                  <span className="font-medium">Propina sugerida:</span>
+                  <span className="font-bold">
+                    ${calcularPropina().toLocaleString()}
+                  </span>
+                </div>
                 
-                {/* Total final */}
+                {/* Total final (ahora incluye propina) */}
                 <div className="flex justify-between items-center pt-2 border-t-2 border-zinc-700">
-                  <span className="text-lg font-bold text-white">TOTAL:</span>
+                  <span className="text-lg font-bold text-white">TOTAL A PAGAR:</span>
                   <span className="text-2xl font-bold text-orange-500">
-                    ${(calcularTotal() + (esDomicilio() && valorDomicilio ? parseFloat(valorDomicilio) : 0)).toLocaleString()}
+                    ${(calcularTotal() + (esDomicilio() && valorDomicilio ? parseFloat(valorDomicilio) : 0) + calcularPropina()).toLocaleString()}
                   </span>
                 </div>
               </div>
