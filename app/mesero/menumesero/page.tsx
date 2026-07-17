@@ -88,7 +88,6 @@ export default function MeseroPage() {
     try {
       setLoading(true);
 
-      // Obtener negocio_id del usuario actual
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -109,7 +108,6 @@ export default function MeseroPage() {
 
       const negocioId = usuarioData.negocio_id;
 
-      // Obtener datos del negocio
       const { data: negocioData } = await supabase
         .from('negocios')
         .select('nombre, logo_url')
@@ -121,7 +119,6 @@ export default function MeseroPage() {
         setLogoNegocio(negocioData.logo_url);
       }
 
-      // Cargar categorías DEL NEGOCIO
       const { data: categoriasData, error: errorCat } = await supabase
         .from('categorias')
         .select('*')
@@ -131,7 +128,6 @@ export default function MeseroPage() {
 
       if (errorCat) throw errorCat;
 
-      // Cargar productos DEL NEGOCIO
       const { data: productosData, error: errorProd } = await supabase
         .from('productos')
         .select(`
@@ -153,7 +149,6 @@ export default function MeseroPage() {
 
       if (errorProd) throw errorProd;
 
-      // Cargar mesas DEL NEGOCIO
       const { data: mesasData, error: errorMesas } = await supabase
         .from('mesas')
         .select('*')
@@ -162,22 +157,17 @@ export default function MeseroPage() {
 
       if (errorMesas) throw errorMesas;
 
-      // Ordenar las mesas de forma natural
       const mesasOrdenadas = (mesasData as Mesa[] ?? []).sort((a, b) => {
-        // Extraer números de los nombres
         const numeroA = a.numero.match(/\d+/);
         const numeroB = b.numero.match(/\d+/);
         
-        // Si ambos tienen números, comparar numéricamente
         if (numeroA && numeroB) {
           return parseInt(numeroA[0]) - parseInt(numeroB[0]);
         }
         
-        // Si solo uno tiene número, el que tiene va después
         if (numeroA) return 1;
         if (numeroB) return -1;
         
-        // Si ninguno tiene número, ordenar alfabéticamente
         return a.numero.localeCompare(b.numero);
       });
 
@@ -199,7 +189,6 @@ export default function MeseroPage() {
       const nombreProducto = p.nombre.toLowerCase();
       const categoriaNombre = p.categorias?.nombre?.toLowerCase() || '';
       
-      // Coincide si busca en el nombre del producto O en el nombre de la categoría
       const coincideBusqueda = nombreProducto.includes(busquedaLower) || 
                               categoriaNombre.includes(busquedaLower);
       
@@ -229,12 +218,10 @@ export default function MeseroPage() {
       grupos[catNombre].productos.push(producto);
     });
     
-    // Ordenar productos dentro de cada categoría por precio (mayor a menor)
     Object.keys(grupos).forEach(catNombre => {
       grupos[catNombre].productos.sort((a, b) => b.precio - a.precio);
     });
     
-    // Convertir a array, ordenar categorías alfabéticamente y volver a objeto
     const gruposOrdenados = Object.keys(grupos)
       .sort((a, b) => a.localeCompare(b))
       .reduce((acc, key) => {
@@ -246,10 +233,8 @@ export default function MeseroPage() {
   }, [productosFiltrados]);
 
   const agregarProducto = (producto: Producto) => {
-    // Abrir modal para agregar notas
     setProductoSeleccionado(producto);
     
-    // Si ya existe en el pedido, cargar su cantidad y notas
     const itemExistente = pedido.find(item => item.producto.id === producto.id);
     if (itemExistente) {
       setCantidadTemp(itemExistente.cantidad);
@@ -269,7 +254,6 @@ export default function MeseroPage() {
       const existe = prev.find(item => item.producto.id === productoSeleccionado.id);
       
       if (existe) {
-        // Actualizar existente
         return prev.map(item =>
           item.producto.id === productoSeleccionado.id
             ? { ...item, cantidad: cantidadTemp, notas: notasTemp }
@@ -277,7 +261,6 @@ export default function MeseroPage() {
         );
       }
       
-      // Agregar nuevo
       return [...prev, { 
         producto: productoSeleccionado, 
         cantidad: cantidadTemp,
@@ -285,7 +268,6 @@ export default function MeseroPage() {
       }];
     });
 
-    // Cerrar modal
     setModalNotasOpen(false);
     setProductoSeleccionado(null);
     setCantidadTemp(1);
@@ -313,14 +295,23 @@ export default function MeseroPage() {
     return pedido.reduce((sum, item) => sum + (item.producto.precio * item.cantidad), 0);
   };
 
-  const calcularPropina = () => {
-  return calcularTotal() * 0.10;
-  };
-
   const esDomicilio = () => {
       const mesaSelec = mesas.find(m => m.id === mesaSeleccionada);
       return mesaSelec?.numero.toLowerCase().includes('domicilio');
     };
+
+  const esParaLlevar = () => {
+      const mesaSelec = mesas.find(m => m.id === mesaSeleccionada);
+      return mesaSelec?.numero.toLowerCase().includes('llevar');
+    };
+
+  // La propina sugerida solo aplica a pedidos de mesa (no domicilio ni para llevar)
+  const aplicaPropina = () => !esDomicilio() && !esParaLlevar();
+
+  const calcularPropina = () => {
+    if (!aplicaPropina()) return 0;
+    return calcularTotal() * 0.10;
+  };
 
   const enviarPedido = async () => {
     if (!mesaSeleccionada) {
@@ -338,7 +329,6 @@ export default function MeseroPage() {
       return;
     }
 
-    // 🆕 Validar nombre del cliente
     if (!nombreCliente.trim()) {
       toast.error('Por favor ingresa el nombre del cliente');
       return;
@@ -362,7 +352,6 @@ export default function MeseroPage() {
       const costoEnvio = esDomicilio() ? parseFloat(valorDomicilio || '0') : 0;
       const totalFinal = totalProductos + costoEnvio;
 
-      // Obtener usuario autenticado
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user) {
@@ -372,7 +361,6 @@ export default function MeseroPage() {
         return;
       }
 
-      // Buscar en tabla usuarios
       const { data: usuarioData, error: usuarioError } = await supabase
         .from('usuarios')
         .select('id, nombre, rol, negocio_id')
@@ -388,18 +376,16 @@ export default function MeseroPage() {
 
       console.log('👤 Mesero:', usuarioData.nombre, '- Rol:', usuarioData.rol);
 
-      // 🆕 CREAR O BUSCAR CLIENTE
       let clienteId: string | null = null;
 
       console.log('🔍 Buscando cliente:', nombreCliente.trim(), 'en negocio:', usuarioData.negocio_id);
 
-      // Buscar si el cliente ya existe (por nombre y negocio)
       const { data: clienteExistente, error: errorBusqueda } = await supabase
         .from('clientes')
         .select('id')
         .eq('nombre', nombreCliente.trim())
         .eq('negocio_id', usuarioData.negocio_id)
-        .maybeSingle(); // 👈 Usar maybeSingle() en lugar de single()
+        .maybeSingle();
 
       if (errorBusqueda) {
         console.error('❌ Error buscando cliente:', errorBusqueda);
@@ -409,11 +395,9 @@ export default function MeseroPage() {
       }
 
       if (clienteExistente) {
-        // Cliente ya existe
         clienteId = clienteExistente.id;
         console.log('✅ Cliente existente:', clienteId);
       } else {
-        // Crear nuevo cliente
         console.log('➕ Creando nuevo cliente...');
         const { data: nuevoCliente, error: errorCliente } = await supabase
           .from('clientes')
@@ -442,13 +426,12 @@ export default function MeseroPage() {
         console.log('✅ Nuevo cliente creado con ID:', clienteId);
       }
 
-      // Crear pedido CON cliente_id
       const datosAPedir = {
         mesa_id: mesaSeleccionada,
         mesero_id: usuarioData.id,
         negocio_id: usuarioData.negocio_id,
         cliente_id: clienteId,
-        estado: 'vendido', // 🔥 CAMBIAR A 'vendido' (ya no usamos 'pendiente')
+        estado: 'vendido',
         total: totalFinal,
         es_domicilio: esDomicilio(),
         direccion_domicilio: esDomicilio() ? direccionDomicilio : null,
@@ -458,14 +441,6 @@ export default function MeseroPage() {
       };
 
       console.log('📝 Creando pedido con datos:', datosAPedir);
-      console.log('📝 Tipos de datos:', {
-        mesa_id: typeof mesaSeleccionada,
-        mesero_id: typeof usuarioData.id,
-        negocio_id: typeof usuarioData.negocio_id,
-        cliente_id: typeof clienteId,
-        total: typeof totalFinal,
-        valor_domicilio: typeof costoEnvio
-      });
 
       const { data: pedidoData, error: errorPedido } = await supabase
         .from('pedidos')
@@ -475,7 +450,6 @@ export default function MeseroPage() {
 
       if (errorPedido) {
         console.error('❌ Error creando pedido:', errorPedido);
-        console.error('❌ Error completo:', JSON.stringify(errorPedido, null, 2));
         toast.error('Error al crear pedido: ' + (errorPedido.message || JSON.stringify(errorPedido)));
         throw errorPedido;
       }
@@ -488,7 +462,6 @@ export default function MeseroPage() {
 
       console.log('✅ Pedido creado con ID:', pedidoData.id);
 
-      // Crear detalles del pedido
       const detalles = pedido.map(item => ({
         pedido_id: pedidoData.id,
         producto_id: item.producto.id,
@@ -514,17 +487,15 @@ export default function MeseroPage() {
 
       const mesaNumero = mesas.find(m => m.id === mesaSeleccionada)?.numero;
 
-      // Limpiar campos
       setPedido([]);
       setMesaSeleccionada("");
       setDireccionDomicilio("");
       setValorDomicilio("");
       setMostrarResumen(false);
       setMedioPago("");
-      setNombreCliente(""); // 🆕 LIMPIAR NOMBRE CLIENTE
+      setNombreCliente("");
       setNotasPedido("");
 
-      // Mostrar notificación
       toast.success('¡Pedido enviado exitosamente! 🎉', {
         description: `Mesa ${mesaNumero} - ${nombreCliente} - Total: $${totalFinal.toLocaleString()}`,
         duration: 5000,
@@ -538,12 +509,6 @@ export default function MeseroPage() {
       });
     } catch (err: any) {
       console.error('❌ Error enviando pedido:', err);
-      console.error('❌ Detalles completos del error:', {
-        message: err?.message,
-        code: err?.code,
-        details: err?.details,
-        hint: err?.hint
-      });
       
       const mensajeError = err?.message || 'Error desconocido al enviar el pedido';
       toast.error('Error: ' + mensajeError, {
@@ -724,7 +689,6 @@ export default function MeseroPage() {
           onClick={() => setMostrarResumen(false)}
         >
           <Card className="w-full max-w-md max-h-[80vh] overflow-auto bg-zinc-900 border-2 border-zinc-800 shadow-2xl shadow-orange-500/30" onClick={(e) => e.stopPropagation()}>
-            {/* Header naranja extendido con selectores incluidos */}
             <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white space-y-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl font-bold">Resumen del Pedido</CardTitle>
@@ -738,7 +702,6 @@ export default function MeseroPage() {
                 </Button>
               </div>
               
-              {/* Selector de mesa dentro del header naranja */}
               <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
                 <label className="text-sm font-medium block mb-2 flex items-center gap-2">
                   <span className="text-lg">🪑</span>
@@ -758,7 +721,6 @@ export default function MeseroPage() {
                 </Select>
               </div>
               
-              {/* Campos para domicilio dentro del header naranja */}
               {esDomicilio() && (
                 <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 space-y-3">
                   <div className="flex items-center gap-2 font-semibold">
@@ -793,7 +755,6 @@ export default function MeseroPage() {
                 </div>
               )}
               
-              {/* Selector de medio de pago dentro del header naranja */}
               <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
                 <label className="text-sm font-medium block mb-2 flex items-center gap-2">
                   <span className="text-lg">💳</span>
@@ -812,7 +773,6 @@ export default function MeseroPage() {
                 </Select>
               </div>
 
-              {/* 🆕 Campo de nombre del cliente dentro del header naranja */}
               <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
                 <label className="text-sm font-medium block mb-2 flex items-center gap-2">
                   <span className="text-lg">👤</span>
@@ -826,7 +786,6 @@ export default function MeseroPage() {
                 />
               </div>
 
-              {/* Campo de notas del pedido */}
               <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3">
                 <label className="text-sm font-medium block mb-2 flex items-center gap-2">
                   <StickyNote className="w-4 h-4" />
@@ -841,7 +800,6 @@ export default function MeseroPage() {
               </div>
             </CardHeader>
 
-            {/* Body oscuro con lista de productos */}
             <CardContent className="p-4 space-y-3 bg-zinc-900">
               {pedido.map((item) => (
                 <div key={item.producto.id} className="border-b border-zinc-700 pb-3 mb-3 last:border-0">
@@ -865,7 +823,6 @@ export default function MeseroPage() {
               
               {/* Sección de totales con fondo destacado */}
               <div className="pt-3 border-t-2 border-orange-500/30 bg-zinc-800 rounded-lg p-3 space-y-2">
-                {/* Subtotal productos */}
                 <div className="flex justify-between items-center text-zinc-300">
                   <span className="font-medium">Subtotal:</span>
                   <span className="font-bold">
@@ -873,7 +830,6 @@ export default function MeseroPage() {
                   </span>
                 </div>
                 
-                {/* Costo domicilio (solo si aplica) */}
                 {esDomicilio() && valorDomicilio && (
                   <div className="flex justify-between items-center text-orange-400">
                     <span className="font-medium">Domicilio:</span>
@@ -883,15 +839,16 @@ export default function MeseroPage() {
                   </div>
                 )}
 
-                {/* NUEVO: Propina sugerida */}
-                <div className="flex justify-between items-center text-zinc-400">
-                  <span className="font-medium">Propina sugerida:</span>
-                  <span className="font-bold">
-                    ${calcularPropina().toLocaleString()}
-                  </span>
-                </div>
+                {/* 🆕 Propina sugerida: SOLO para pedidos de mesa (no domicilio ni para llevar) */}
+                {aplicaPropina() && (
+                  <div className="flex justify-between items-center text-zinc-400">
+                    <span className="font-medium">Propina sugerida:</span>
+                    <span className="font-bold">
+                      ${calcularPropina().toLocaleString()}
+                    </span>
+                  </div>
+                )}
                 
-                {/* Total final (ahora incluye propina) */}
                 <div className="flex justify-between items-center pt-2 border-t-2 border-zinc-700">
                   <span className="text-lg font-bold text-white">TOTAL A PAGAR:</span>
                   <span className="text-2xl font-bold text-orange-500">
@@ -900,7 +857,6 @@ export default function MeseroPage() {
                 </div>
               </div>
 
-              {/* Botones de acción */}
               <div className="flex gap-2 pt-3">
                 <Button
                   variant="outline"
@@ -912,7 +868,7 @@ export default function MeseroPage() {
                     setValorDomicilio("");
                     setMostrarResumen(false);
                     setMedioPago("");
-                    setNombreCliente(""); // 🆕 LIMPIAR NOMBRE CLIENTE
+                    setNombreCliente("");
                     setNotasPedido("");
                   }}
                 >
@@ -965,7 +921,6 @@ export default function MeseroPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Cantidad */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Cantidad</label>
               <div className="flex items-center justify-center gap-4 bg-gray-100 rounded-lg p-3">
@@ -987,7 +942,6 @@ export default function MeseroPage() {
               </div>
             </div>
 
-            {/* Notas */}
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <StickyNote className="w-4 h-4" />
@@ -1001,7 +955,6 @@ export default function MeseroPage() {
               />
             </div>
 
-            {/* Precio total */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
               <div className="flex justify-between items-center">
                 <span className="font-medium">Subtotal:</span>
