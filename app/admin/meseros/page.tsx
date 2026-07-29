@@ -150,108 +150,32 @@ export default function MeserosPage() {
       } else {
         // ============================================
         // CREAR nuevo mesero (O REACTIVAR si existe)
+        // — ahora vía endpoint del servidor, para no perder la sesión
+        // del admin ni dejar cuentas huérfanas si algo falla a mitad
+        // de camino.
         // ============================================
 
-        console.log('📝 Verificando si mesero existe:', email.trim());
+        console.log('📝 Creando/reactivando mesero vía API:', email.trim());
 
-        // Obtener negocio_id del usuario actual
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Usuario no autenticado');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('No se pudo obtener la sesión actual');
 
-        const { data: usuarioData } = await supabase
-          .from('usuarios')
-          .select('negocio_id')
-          .eq('auth_user_id', user.id)
-          .single();
+        const response = await fetch('/api/meseros', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ nombre: nombre.trim(), email: email.trim() }),
+        });
 
-        if (!usuarioData) throw new Error('No se pudo obtener el negocio');
+        const resultado = await response.json();
 
-        const negocioId = usuarioData.negocio_id;
-
-        // 🔍 VERIFICAR si ya existe un mesero con ese email (activo o inactivo)
-        const { data: meseroExistente, error: buscarError } = await supabase
-          .from('usuarios')
-          .select('id, activo, auth_user_id')
-          .eq('email', email.trim())
-          .eq('negocio_id', negocioId)
-          .eq('rol', 'mesero')
-          .maybeSingle();
-
-        if (buscarError) throw buscarError;
-
-        if (meseroExistente) {
-          // ✅ EL MESERO YA EXISTE
-          console.log('👤 Mesero encontrado:', meseroExistente);
-
-          if (meseroExistente.activo) {
-            // Si ya está activo, mostrar error
-            setError('Este email ya está registrado como mesero activo');
-            setGuardando(false);
-            return;
-          } else {
-            // 🔄 REACTIVAR mesero inactivo
-            console.log('🔄 Reactivando mesero inactivo...');
-
-            const { error: reactivarError } = await supabase
-              .from('usuarios')
-              .update({
-                nombre: nombre.trim(),
-                activo: true
-              })
-              .eq('id', meseroExistente.id);
-
-            if (reactivarError) throw reactivarError;
-
-            console.log('✅ Mesero reactivado exitosamente');
-          }
-
-        } else {
-          // ➕ CREAR NUEVO MESERO
-          console.log('➕ Creando nuevo mesero...');
-
-          // 1. Crear usuario en Supabase Auth
-          const { data: authData, error: signUpError } = await supabase.auth.signUp({
-            email: email.trim(),
-            password: '123456',
-            options: {
-              emailRedirectTo: undefined,
-              data: {
-                nombre: nombre.trim(),
-                rol: 'mesero'
-              }
-            }
-          });
-
-          if (signUpError) {
-            console.error('❌ Error en signUp:', signUpError);
-            throw new Error(signUpError.message);
-          }
-
-          if (!authData.user) {
-            throw new Error('No se pudo crear el usuario en Auth');
-          }
-
-          console.log('✅ Usuario auth creado:', authData.user.id);
-
-          // 2. Crear en tabla usuarios
-          const { error: insertError } = await supabase
-            .from('usuarios')
-            .insert([{
-              auth_user_id: authData.user.id,
-              negocio_id: negocioId,
-              nombre: nombre.trim(),
-              email: email.trim(),
-              rol: 'mesero',
-              activo: true
-            }]);
-
-          if (insertError) {
-            console.error('❌ Error insertando usuario:', insertError);
-            throw new Error(insertError.message);
-          }
-
-          console.log('✅ Mesero creado exitosamente');
+        if (!response.ok) {
+          throw new Error(resultado.error || 'Error al crear el mesero');
         }
+
+        console.log('✅ Mesero creado/reactivado exitosamente', resultado);
       }
 
       // Recargar lista y cerrar modal

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import SubirLogo from "@/components/ui/SubirLogo";
+import SubirPortada from "@/components/ui/SubirPortada";
+import SubirFondo from "@/components/ui/SubirFondo";
 import { 
   DollarSign, 
   ShoppingBag, 
@@ -52,6 +54,8 @@ export default function DashboardPage() {
   const [ultimaActualizacion, setUltimaActualizacion] = useState<Date>(new Date());
   const [negocioId, setNegocioId] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [portadaUrl, setPortadaUrl] = useState<string | null>(null);
+  const [fondoUrl, setFondoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     cargarDatos();
@@ -65,7 +69,6 @@ export default function DashboardPage() {
         setActualizando(true);
       }
 
-      // Obtener negocio_id del usuario actual
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -80,18 +83,22 @@ export default function DashboardPage() {
       const negocioId = usuarioData.negocio_id;
       setNegocioId(negocioId);
 
-      // Obtener logo del negocio
       const { data: negocioData } = await supabase
         .from('negocios')
-        .select('logo_url')
+        .select('logo_url, imagen_portada, imagen_fondo')
         .eq('id', negocioId)
         .single();
 
       if (negocioData?.logo_url) {
         setLogoUrl(negocioData.logo_url);
       }
+      if (negocioData?.imagen_portada) {
+        setPortadaUrl(negocioData.imagen_portada);
+      }
+      if (negocioData?.imagen_fondo) {
+        setFondoUrl(negocioData.imagen_fondo);
+      }
 
-      // Fechas para hoy y ayer
       const hoy = new Date();
       hoy.setHours(0, 0, 0, 0);
       const finHoy = new Date();
@@ -104,7 +111,6 @@ export default function DashboardPage() {
       finAyer.setDate(finAyer.getDate() - 1);
       finAyer.setHours(23, 59, 59, 999);
 
-      // Cargar pedidos de hoy DEL NEGOCIO (solo vendidos)
       const { data: dataPedidosHoy, error: errorHoy } = await supabase
         .from('pedidos')
         .select(`
@@ -125,7 +131,6 @@ export default function DashboardPage() {
 
       if (errorHoy) throw errorHoy;
 
-      // Cargar pedidos de ayer DEL NEGOCIO (sin filtro de estado)
       const { data: dataPedidosAyer, error: errorAyer } = await supabase
         .from('pedidos')
         .select('id, total')
@@ -148,7 +153,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Determinar tipo de pedido
   const getTipoPedido = (pedido: Pedido): 'mesa' | 'domicilio' | 'para_llevar' => {
     const mesaNumero = pedido.mesas.numero.toLowerCase();
     
@@ -166,13 +170,10 @@ export default function DashboardPage() {
     const cambioVentas = ventasAyer > 0 ? ((ventasHoy - ventasAyer) / ventasAyer) * 100 : 0;
     const cambioPedidos = pedidosCountAyer > 0 ? ((pedidosCountHoy - pedidosCountAyer) / pedidosCountAyer) * 100 : 0;
 
-    // Calcular domicilios
     const domiciliosHoy = pedidosHoy.filter(p => getTipoPedido(p) === 'domicilio').length;
 
-    // Ticket promedio
     const ticketPromedio = pedidosCountHoy > 0 ? ventasHoy / pedidosCountHoy : 0;
 
-    // Distribución por tipo
     const mesasCount = pedidosHoy.filter(p => getTipoPedido(p) === 'mesa').length;
     const domiciliosCount = pedidosHoy.filter(p => getTipoPedido(p) === 'domicilio').length;
     const paraLlevarCount = pedidosHoy.filter(p => getTipoPedido(p) === 'para_llevar').length;
@@ -198,7 +199,6 @@ export default function DashboardPage() {
     };
   };
 
-  // Top 5 productos del día
   const obtenerTopProductos = (): ProductoVendido[] => {
     const productosMap = new Map<string, number>();
 
@@ -255,7 +255,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Botón actualizar */}
           <div className="flex flex-col items-end gap-2">
             <Button
               onClick={cargarDatos}
@@ -273,7 +272,6 @@ export default function DashboardPage() {
 
         {/* Métricas principales del día */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Ventas HOY */}
           <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -310,7 +308,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Pedidos HOY */}
           <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -347,7 +344,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Domicilios HOY */}
           <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -369,7 +365,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Ticket Promedio */}
           <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -402,7 +397,6 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Mesas */}
               <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 hover:shadow-lg hover:shadow-orange-500/20 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold text-orange-800">MESAS</span>
@@ -424,7 +418,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Domicilios */}
               <div className="bg-zinc-50 border-2 border-zinc-300 rounded-xl p-4 hover:shadow-lg hover:shadow-zinc-500/20 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold text-zinc-800">DOMICILIOS</span>
@@ -446,7 +439,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Para Llevar */}
               <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 hover:shadow-lg hover:shadow-orange-500/20 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold text-orange-800">PARA LLEVAR</span>
@@ -510,7 +502,7 @@ export default function DashboardPage() {
 
         {/* Logo del Negocio */}
         {negocioId && (
-          <Card className="border-2 border-zinc-200">
+          <Card className="border-2 border-zinc-200 mb-8">
             <CardHeader className="bg-zinc-50 border-b border-zinc-200">
               <CardTitle className="flex items-center gap-2 text-lg text-zinc-900">
                 <span className="text-2xl">🏢</span>
@@ -519,7 +511,6 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-6">
               <div className="grid md:grid-cols-2 gap-8">
-                {/* Logo actual (preview grande) */}
                 <div>
                   <h3 className="font-semibold text-zinc-700 mb-3">Logo Actual</h3>
                   {logoUrl ? (
@@ -540,12 +531,97 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Componente de subida */}
                 <div>
                   <SubirLogo 
                     negocioId={negocioId} 
                     logoActual={logoUrl}
                     onLogoActualizado={(newUrl) => setLogoUrl(newUrl)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Foto de Portada del Negocio (para la página de domicilios) */}
+        {negocioId && (
+          <Card className="border-2 border-zinc-200 mb-8">
+            <CardHeader className="bg-zinc-50 border-b border-zinc-200">
+              <CardTitle className="flex items-center gap-2 text-lg text-zinc-900">
+                <span className="text-2xl">🖼️</span>
+                Foto de Portada (Página Domicilios)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid md:grid-cols-2 gap-8">
+                <div>
+                  <h3 className="font-semibold text-zinc-700 mb-3">Portada Actual</h3>
+                  {portadaUrl ? (
+                    <div className="w-full aspect-[16/7] border-2 border-zinc-300 rounded-xl overflow-hidden bg-white shadow-lg">
+                      <img 
+                        src={portadaUrl} 
+                        alt="Portada del negocio" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-[16/7] border-2 border-dashed border-zinc-300 rounded-xl bg-zinc-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <span className="text-4xl mb-2 block">🖼️</span>
+                        <p className="text-sm text-zinc-500">Sin foto de portada</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <SubirPortada
+                    negocioId={negocioId}
+                    portadaActual={portadaUrl}
+                    onPortadaActualizada={(newUrl: string) => setPortadaUrl(newUrl)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Fondo de la Página de Domicilios */}
+        {negocioId && (
+          <Card className="border-2 border-zinc-200">
+            <CardHeader className="bg-zinc-50 border-b border-zinc-200">
+              <CardTitle className="flex items-center gap-2 text-lg text-zinc-900">
+                <span className="text-2xl">🎨</span>
+                Fondo de la Página (Página Domicilios)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid md:grid-cols-2 gap-8">
+                <div>
+                  <h3 className="font-semibold text-zinc-700 mb-3">Fondo Actual</h3>
+                  {fondoUrl ? (
+                    <div className="w-full aspect-[16/9] border-2 border-zinc-300 rounded-xl overflow-hidden bg-white shadow-lg">
+                      <img 
+                        src={fondoUrl} 
+                        alt="Fondo de la página" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-[16/9] border-2 border-dashed border-zinc-300 rounded-xl bg-zinc-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <span className="text-4xl mb-2 block">🎨</span>
+                        <p className="text-sm text-zinc-500">Sin fondo personalizado (blanco por defecto)</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <SubirFondo
+                    negocioId={negocioId}
+                    fondoActual={fondoUrl}
+                    onFondoActualizado={(newUrl: string) => setFondoUrl(newUrl)}
                   />
                 </div>
               </div>

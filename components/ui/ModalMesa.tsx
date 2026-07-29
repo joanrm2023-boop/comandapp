@@ -94,17 +94,48 @@ export default function ModalMesa({ open, onOpenChange, onMesaCreada, mesaAEdita
 
         if (updateError) throw updateError;
       } else {
-        // CREAR nueva mesa (capacidad por defecto = 4)
-        const { error: insertError } = await supabase
+        // 🆕 Antes de crear, verificar si ya existe una mesa con ese
+        // número en este negocio (activa o inactiva). La restricción
+        // única "mesas_numero_negocio_unique" cuenta también las
+        // inactivas, así que un simple insert() fallaría con
+        // "duplicate key" si esa mesa fue "eliminada" antes (lo cual
+        // solo la desactiva, nunca borra la fila).
+        const { data: mesaExistente, error: errorBusqueda } = await supabase
           .from('mesas')
-          .insert([{
-            numero: numero.trim(),
-            capacidad: 4, // Valor por defecto
-            negocio_id: usuarioData.negocio_id,
-            activo: true
-          }]);
+          .select('id, activo')
+          .eq('numero', numero.trim())
+          .eq('negocio_id', usuarioData.negocio_id)
+          .maybeSingle();
 
-        if (insertError) throw insertError;
+        if (errorBusqueda) throw errorBusqueda;
+
+        if (mesaExistente) {
+          if (mesaExistente.activo) {
+            // Ya existe una mesa activa con ese mismo nombre: error real
+            throw new Error('Ya existe una mesa activa con ese nombre/número');
+          }
+
+          // Existe pero está inactiva (borrada antes): la reactivamos
+          // en vez de intentar crear una fila nueva duplicada.
+          const { error: reactivarError } = await supabase
+            .from('mesas')
+            .update({ activo: true, capacidad: 4 })
+            .eq('id', mesaExistente.id);
+
+          if (reactivarError) throw reactivarError;
+        } else {
+          // No existe ninguna con ese nombre: crear normalmente
+          const { error: insertError } = await supabase
+            .from('mesas')
+            .insert([{
+              numero: numero.trim(),
+              capacidad: 4, // Valor por defecto
+              negocio_id: usuarioData.negocio_id,
+              activo: true
+            }]);
+
+          if (insertError) throw insertError;
+        }
       }
 
       // Limpiar y cerrar

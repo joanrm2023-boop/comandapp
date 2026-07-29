@@ -14,7 +14,8 @@ import {
   Users,
   ChefHat,
   Armchair,
-  Package 
+  Package,
+  Truck
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -79,7 +80,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/pedidos", label: "Pedidos", icon: ListChecks },
     { href: "/admin/mesas", label: "Mesas", icon: Armchair },
     { href: "/admin/meseros", label: "Meseros", icon: Users },
-    { href: "/admin/inventario", label: "Inventario", icon: Package }
+    { href: "/admin/inventario", label: "Inventario", icon: Package },
+    { href: "/admin/pagina_Domicilios", label: "Página Domicilios", icon: Truck }
   ];
 
   return (

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard } from "lucide-react";
+import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard, UtensilsCrossed, Home, ShoppingBag as ShoppingBagIcon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // Tipos
@@ -144,9 +144,21 @@ export default function VentasPage() {
     }
   };
 
+  // 🆕 Determinar el tipo de pedido a partir del nombre de la mesa
+  // (misma lógica que ya usa PedidosPage/Dashboard)
+  const getTipoPedido = (pedido: Pedido): 'mesa' | 'domicilio' | 'para_llevar' => {
+    const mesaNumero = pedido.mesas.numero.toLowerCase();
+    if (mesaNumero.includes('domicilio')) return 'domicilio';
+    if (mesaNumero.includes('llevar')) return 'para_llevar';
+    return 'mesa';
+  };
+
+  // Pedidos ya filtrados por fecha/medio de pago (desde la query).
+  const pedidosFiltrados = pedidos;
+
   const calcularMetricas = () => {
-    const totalVentas = pedidos.reduce((sum, p) => sum + Number(p.total), 0);
-    const totalPedidos = pedidos.length;
+    const totalVentas = pedidosFiltrados.reduce((sum, p) => sum + Number(p.total), 0);
+    const totalPedidos = pedidosFiltrados.length;
     const ticketPromedio = totalPedidos > 0 ? totalVentas / totalPedidos : 0;
 
     // Calcular pedidos por hora
@@ -162,10 +174,29 @@ export default function VentasPage() {
     };
   };
 
+  // 🆕 Resumen comparativo por tipo, SIEMPRE sobre el conjunto completo
+  // (fecha + medio de pago aplicados, pero sin el filtro de tipo), para
+  // que se vea el panorama completo sin importar qué tipo esté activo.
+  const calcularResumenPorTipo = () => {
+    const deTipo = (tipo: 'mesa' | 'domicilio' | 'para_llevar') =>
+      pedidos.filter((p) => getTipoPedido(p) === tipo);
+
+    const armar = (lista: Pedido[]) => ({
+      cantidad: lista.length,
+      total: lista.reduce((sum, p) => sum + Number(p.total), 0),
+    });
+
+    return {
+      mesa: armar(deTipo('mesa')),
+      domicilio: armar(deTipo('domicilio')),
+      para_llevar: armar(deTipo('para_llevar')),
+    };
+  };
+
   const obtenerProductosMasVendidos = (): ProductoVendido[] => {
     const productosMap = new Map<string, ProductoVendido>();
 
-    pedidos.forEach(pedido => {
+    pedidosFiltrados.forEach(pedido => {
       pedido.detalle_pedidos.forEach(detalle => {
         const nombre = detalle.productos.nombre;
         const cantidad = detalle.cantidad;
@@ -217,7 +248,32 @@ export default function VentasPage() {
     }
   };
 
+  // 🆕 Ícono/etiqueta de tipo para la columna nueva de la tabla
+  const obtenerBadgeTipo = (pedido: Pedido) => {
+    const tipo = getTipoPedido(pedido);
+    if (tipo === 'domicilio') {
+      return (
+        <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 gap-1">
+          <Home className="w-3 h-3" /> Domicilio
+        </Badge>
+      );
+    }
+    if (tipo === 'para_llevar') {
+      return (
+        <Badge className="bg-zinc-100 text-zinc-700 hover:bg-zinc-100 gap-1">
+          <ShoppingBagIcon className="w-3 h-3" /> Para llevar
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="font-semibold border-zinc-300">
+        Mesa {pedido.mesas.numero}
+      </Badge>
+    );
+  };
+
   const metricas = calcularMetricas();
+  const resumenTipo = calcularResumenPorTipo();
   const topProductos = obtenerProductosMasVendidos();
 
   if (loading) {
@@ -337,8 +393,8 @@ export default function VentasPage() {
           )}
         </div>
 
-        {/* 🆕 Filtros por Medio de Pago */}
-        <div className="bg-white rounded-xl border-2 border-zinc-200 p-4 mb-8">
+        {/* Filtros por Medio de Pago */}
+        <div className="bg-white rounded-xl border-2 border-zinc-200 p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
             <CreditCard className="w-5 h-5 text-orange-500" />
             <h3 className="font-semibold text-zinc-900">Filtrar por Medio de Pago</h3>
@@ -396,31 +452,64 @@ export default function VentasPage() {
               💳 Bold
             </Button>
           </div>
+        </div>
 
-          {/* Indicador de filtros activos */}
-          <div className="mt-3 p-3 bg-zinc-50 rounded-lg border border-zinc-200">
-            <p className="text-sm text-zinc-700">
-              <span className="font-semibold">Mostrando:</span> Ventas de{" "}
-              <span className="font-semibold text-orange-600">
-                {filtroFecha === "hoy" && "hoy"}
-                {filtroFecha === "ayer" && "ayer"}
-                {filtroFecha === "semana" && "la última semana"}
-                {filtroFecha === "mes" && "este mes"}
-                {filtroFecha === "personalizado" && "rango personalizado"}
-              </span>
-              {filtroPago !== "todos" && (
-                <>
-                  {" "}pagadas con{" "}
-                  <span className="font-semibold text-orange-600">
-                    {obtenerIconoMedioPago(filtroPago)} {filtroPago}
-                  </span>
-                </>
-              )}
-            </p>
+        {/* Indicador de filtros activos */}
+        <div className="mb-8 p-3 bg-zinc-50 rounded-lg border border-zinc-200">
+          <p className="text-sm text-zinc-700">
+            <span className="font-semibold">Mostrando:</span> Ventas de{" "}
+            <span className="font-semibold text-orange-600">
+              {filtroFecha === "hoy" && "hoy"}
+              {filtroFecha === "ayer" && "ayer"}
+              {filtroFecha === "semana" && "la última semana"}
+              {filtroFecha === "mes" && "este mes"}
+              {filtroFecha === "personalizado" && "rango personalizado"}
+            </span>
+            {filtroPago !== "todos" && (
+              <>
+                {" "}pagadas con{" "}
+                <span className="font-semibold text-orange-600">
+                  {obtenerIconoMedioPago(filtroPago)} {filtroPago}
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+
+        {/* 🆕 Resumen comparativo por tipo — siempre visible, sin importar el filtro de tipo activo */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-orange-800">🪑 MESAS</span>
+              <span className="text-xs text-orange-600">{resumenTipo.mesa.cantidad} pedidos</span>
+            </div>
+            <div className="text-2xl font-bold text-orange-600">
+              ${resumenTipo.mesa.total.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="bg-zinc-50 border-2 border-zinc-300 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-zinc-800">🏠 DOMICILIO</span>
+              <span className="text-xs text-zinc-600">{resumenTipo.domicilio.cantidad} pedidos</span>
+            </div>
+            <div className="text-2xl font-bold text-zinc-900">
+              ${resumenTipo.domicilio.total.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-orange-800">🛍️ PARA LLEVAR</span>
+              <span className="text-xs text-orange-600">{resumenTipo.para_llevar.cantidad} pedidos</span>
+            </div>
+            <div className="text-2xl font-bold text-orange-600">
+              ${resumenTipo.para_llevar.total.toLocaleString()}
+            </div>
           </div>
         </div>
 
-        {/* Tarjetas de métricas */}
+        {/* Tarjetas de métricas (ya reflejan el filtro de tipo activo) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Total Ventas */}
           <Card className="border-2 border-zinc-200 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300">
@@ -557,7 +646,7 @@ export default function VentasPage() {
             >
               <CardTitle className="flex items-center gap-2 text-lg text-zinc-900">
                 <Calendar className="w-5 h-5 text-orange-500" />
-                Detalle de Pedidos ({pedidos.length})
+                Detalle de Pedidos ({pedidosFiltrados.length})
               </CardTitle>
               {mostrarDetalle ? (
                 <ChevronUp className="w-5 h-5 text-zinc-600" />
@@ -569,28 +658,26 @@ export default function VentasPage() {
 
           {mostrarDetalle && (
             <CardContent className="p-4">
-              {pedidos.length > 0 ? (
+              {pedidosFiltrados.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b-2 border-zinc-200">
                         <th className="text-left p-3 font-semibold text-zinc-700">Fecha/Hora</th>
-                        <th className="text-left p-3 font-semibold text-zinc-700">Mesa</th>
+                        <th className="text-left p-3 font-semibold text-zinc-700">Tipo</th>
                         <th className="text-left p-3 font-semibold text-zinc-700">Items</th>
                         <th className="text-left p-3 font-semibold text-zinc-700">Medio Pago</th>
                         <th className="text-right p-3 font-semibold text-zinc-700">Total</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {pedidos.map((pedido) => (
+                      {pedidosFiltrados.map((pedido) => (
                         <tr key={pedido.id} className="border-b border-zinc-100 hover:bg-zinc-50">
                           <td className="p-3 text-sm text-zinc-600">
                             {formatearFecha(pedido.created_at)}
                           </td>
                           <td className="p-3">
-                            <Badge variant="outline" className="font-semibold border-zinc-300">
-                              {pedido.mesas.numero}
-                            </Badge>
+                            {obtenerBadgeTipo(pedido)}
                           </td>
                           <td className="p-3 text-sm text-zinc-600">
                             {pedido.detalle_pedidos.reduce((sum, d) => sum + d.cantidad, 0)} items
@@ -618,7 +705,7 @@ export default function VentasPage() {
         </Card>
 
         {/* Mensaje si no hay ventas */}
-        {pedidos.length === 0 && (
+        {pedidosFiltrados.length === 0 && (
           <div className="text-center py-16 bg-white rounded-2xl shadow-lg border-2 border-zinc-200 mt-6">
             <div className="text-6xl mb-4">📊</div>
             <h3 className="text-xl font-semibold text-zinc-900 mb-2">
