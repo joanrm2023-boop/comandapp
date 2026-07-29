@@ -32,6 +32,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     cargarDatos();
   }, []);
 
+  // 🆕 Next.js reaplica su propio título por defecto ("Create Next App")
+  // en cada navegación entre páginas del admin, así que hay que volver
+  // a poner el título/ícono del negocio cada vez que cambia la ruta
+  // (no solo una vez al cargar).
+  useEffect(() => {
+    if (nombreNegocio && nombreNegocio !== "DishHub") {
+      document.title = `${nombreNegocio} - Admin`;
+    }
+    if (logoNegocio) {
+      let linkIcono = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+      if (!linkIcono) {
+        linkIcono = document.createElement("link");
+        linkIcono.rel = "icon";
+        document.head.appendChild(linkIcono);
+      }
+      linkIcono.href = logoNegocio;
+    }
+  }, [pathname, nombreNegocio, logoNegocio]);
+
   const cargarDatos = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();

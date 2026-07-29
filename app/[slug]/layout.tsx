@@ -40,6 +40,13 @@ export async function generateMetadata(
   return {
     title: `${negocio.nombre} - Pide a domicilio`,
     description: `¡Mira el menú de ${negocio.nombre} y pide a domicilio aquí!`,
+    icons: negocio.logo_url
+      ? {
+          icon: negocio.logo_url,
+          shortcut: negocio.logo_url,
+          apple: negocio.logo_url,
+        }
+      : undefined,
     openGraph: {
       title: `${negocio.nombre} - Pide a domicilio`,
       description: `¡Mira el menú de ${negocio.nombre} y pide a domicilio aquí!`,
