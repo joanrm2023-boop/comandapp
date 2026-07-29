@@ -47,6 +47,7 @@ interface Producto {
   descripcion: string | null;
   categoria_id: string;
   visible_en_slug: boolean;
+  orden: number;
   categorias?: { nombre: string; icono: string; color: string } | null;
 }
 
@@ -165,10 +166,10 @@ export default function PaginaDomiciliosAdmin() {
 
       const { data: productosData } = await supabase
         .from("productos")
-        .select(`id, nombre, precio, imagen_url, descripcion, categoria_id, visible_en_slug, categorias ( nombre, icono, color )`)
+        .select(`id, nombre, precio, imagen_url, descripcion, categoria_id, visible_en_slug, orden, categorias ( nombre, icono, color )`)
         .eq("negocio_id", usuarioData.negocio_id)
         .eq("activo", true)
-        .order("nombre");
+        .order("orden", { ascending: true });
 
       const { data: categoriasData } = await supabase
         .from("categorias")
@@ -320,6 +321,38 @@ export default function PaginaDomiciliosAdmin() {
     }
   };
 
+  // 🆕 Estado real combinado: igual lógica que en la página pública.
+  // El botón manual (negocioAbierto) es para cierres de emergencia;
+  // si hay un horario configurado y la hora actual cae fuera de él
+  // (o el día está marcado como descanso), se considera cerrado
+  // automáticamente, sin que el admin tenga que tocar nada.
+  const DIAS_KEYS_JS = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+
+  const hayHorarioConfigurado = () => Object.keys(horarios).length > 0;
+
+  const dentroDeHorarioHabitual = (): boolean => {
+    const diaKey = DIAS_KEYS_JS[new Date().getDay()];
+    const h = horarios[diaKey];
+    if (!h || h.cerrado) return false;
+
+    const [horaApertura, minApertura] = h.apertura.split(":").map(Number);
+    const [horaCierre, minCierre] = h.cierre.split(":").map(Number);
+    if ([horaApertura, minApertura, horaCierre, minCierre].some((n) => isNaN(n))) return false;
+
+    const ahora = new Date();
+    const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
+    const minutosApertura = horaApertura * 60 + minApertura;
+    const minutosCierre = horaCierre * 60 + minCierre;
+
+    return minutosAhora >= minutosApertura && minutosAhora <= minutosCierre;
+  };
+
+  const negocioCerradoAhora = (): boolean => {
+    if (!negocioAbierto) return true;
+    if (hayHorarioConfigurado() && !dentroDeHorarioHabitual()) return true;
+    return false;
+  };
+
   const cambiarEstadoNegocio = async (nuevoEstado: boolean) => {
     if (nuevoEstado === negocioAbierto) return;
     try {
@@ -418,7 +451,7 @@ export default function PaginaDomiciliosAdmin() {
       }
       grupos[cat].productos.push(p);
     });
-    Object.keys(grupos).forEach((c) => grupos[c].productos.sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    Object.keys(grupos).forEach((c) => grupos[c].productos.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)));
 
     // Ordenar las categorías según el orden guardado (categoriasOrdenadas),
     // no alfabéticamente. Cualquier categoría sin match (ej. "Sin categoría")
@@ -460,12 +493,52 @@ export default function PaginaDomiciliosAdmin() {
       toast.success("Orden actualizado");
     } catch (err: any) {
       toast.error("Error al guardar el orden: " + (err?.message || "desconocido"));
-      // Revertir en caso de error
       cargarDatos();
     } finally {
       setGuardandoOrden(false);
     }
   };
+
+  // Mover un producto un puesto arriba o abajo DENTRO de su misma
+  // categoría, y persistir el nuevo orden solo de los productos de
+  // esa categoría (columna `orden` de `productos`).
+  const moverProducto = async (categoriaNombre: string, productoId: string, direccion: "arriba" | "abajo") => {
+    const grupo = productosAgrupados[categoriaNombre];
+    if (!grupo) return;
+
+    const idx = grupo.productos.findIndex((p) => p.id === productoId);
+    if (idx === -1) return;
+    const nuevoIdx = direccion === "arriba" ? idx - 1 : idx + 1;
+    if (nuevoIdx < 0 || nuevoIdx >= grupo.productos.length) return;
+
+    const nuevaLista = [...grupo.productos];
+    [nuevaLista[idx], nuevaLista[nuevoIdx]] = [nuevaLista[nuevoIdx], nuevaLista[idx]];
+
+    // Actualizar el estado local de productos con el nuevo orden
+    setProductos((prev) => {
+      const idsEnOrden = nuevaLista.map((p) => p.id);
+      const mapaOrden: Record<string, number> = {};
+      idsEnOrden.forEach((id, i) => (mapaOrden[id] = i));
+      return prev.map((p) => (p.id in mapaOrden ? { ...p, orden: mapaOrden[p.id] } : p));
+    });
+
+    try {
+      setGuardandoOrden(true);
+      const actualizaciones = nuevaLista.map((p, i) =>
+        supabase.from("productos").update({ orden: i }).eq("id", p.id)
+      );
+      const resultados = await Promise.all(actualizaciones);
+      const conError = resultados.find((r) => r.error);
+      if (conError?.error) throw conError.error;
+      toast.success("Orden actualizado");
+    } catch (err: any) {
+      toast.error("Error al guardar el orden: " + (err?.message || "desconocido"));
+      cargarDatos();
+    } finally {
+      setGuardandoOrden(false);
+    }
+  };
+
 
   useEffect(() => {
     if (busqueda.trim()) {
@@ -728,11 +801,14 @@ export default function PaginaDomiciliosAdmin() {
           <div className="flex items-center gap-3">
             <span
               className={`text-xs font-bold px-3 py-1.5 rounded-full ${
-                negocioAbierto ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
+                !negocioCerradoAhora() ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
               }`}
             >
-              {negocioAbierto ? "🟢 Abierto ahora" : "🔴 Cerrado ahora"}
+              {!negocioCerradoAhora() ? "🟢 Abierto ahora" : "🔴 Cerrado ahora"}
             </span>
+            {negocioAbierto && negocioCerradoAhora() && (
+              <span className="text-zinc-500 text-xs">(cerrado automáticamente por horario)</span>
+            )}
           </div>
 
           <div className="flex gap-2">
@@ -946,7 +1022,7 @@ export default function PaginaDomiciliosAdmin() {
 
                     {abierta && (
                       <div className="border-t border-zinc-800 p-3.5 space-y-3">
-                        {grupo.productos.map((p) => {
+                        {grupo.productos.map((p, indexProducto, arrProductos) => {
                           const e = edicion[p.id] ?? { imagen_url: "", descripcion: "" };
                           const cambios = hayCambiosPendientes(p);
                           const productoOculto = !p.visible_en_slug;
@@ -958,6 +1034,24 @@ export default function PaginaDomiciliosAdmin() {
                               }`}
                             >
                               <div className="flex items-start gap-3">
+                                <div className="flex flex-col gap-0.5 shrink-0 pt-1">
+                                  <button
+                                    onClick={() => moverProducto(catNombre, p.id, "arriba")}
+                                    disabled={guardandoOrden || indexProducto === 0 || busqueda.trim() !== ""}
+                                    className="p-1 rounded hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed text-zinc-500"
+                                    title={busqueda.trim() !== "" ? "Limpia la búsqueda para reordenar" : "Mover arriba"}
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => moverProducto(catNombre, p.id, "abajo")}
+                                    disabled={guardandoOrden || indexProducto === arrProductos.length - 1 || busqueda.trim() !== ""}
+                                    className="p-1 rounded hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed text-zinc-500"
+                                    title={busqueda.trim() !== "" ? "Limpia la búsqueda para reordenar" : "Mover abajo"}
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                </div>
                                 <label
                                   htmlFor={`foto-${p.id}`}
                                   className="group relative w-16 h-16 rounded-lg bg-zinc-800 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer"

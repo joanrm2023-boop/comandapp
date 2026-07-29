@@ -64,6 +64,7 @@ interface Producto {
   imagen_url?: string | null;
   destacado?: boolean;
   visible_en_slug: boolean;
+  orden: number;
   categorias?: { id: string; nombre: string; icono: string; color: string } | null;
 }
 
@@ -239,12 +240,12 @@ export default function PedidoDomicilioPublico() {
 
       const { data: productosData } = await supabase
         .from("productos")
-        .select(`id, nombre, precio, activo, categoria_id, descripcion, imagen_url, visible_en_slug,
+        .select(`id, nombre, precio, activo, categoria_id, descripcion, imagen_url, visible_en_slug, orden,
                  categorias ( id, nombre, icono, color )`)
         .eq("activo", true)
         .eq("visible_en_slug", true)
         .eq("negocio_id", negocioId)
-        .order("nombre");
+        .order("orden", { ascending: true });
 
       const { data: mesaData } = await supabase
         .from("mesas")
@@ -306,7 +307,7 @@ export default function PedidoDomicilioPublico() {
       }
       grupos[cat].productos.push(p);
     });
-    Object.keys(grupos).forEach((c) => grupos[c].productos.sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    Object.keys(grupos).forEach((c) => grupos[c].productos.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)));
 
     // Ordenar según el orden guardado en `categorias` (columna `orden`),
     // no alfabéticamente. Cualquier grupo sin match (ej. "Otros") queda al final.
