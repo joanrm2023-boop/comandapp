@@ -56,9 +56,9 @@ interface Pedido {
       nombre: string;
       precio: number;
     };
-    detalle_pedido_sabores?: Array<{   // 👈 agregar esto
+    detalle_pedido_sabores?: Array<{   // 🆕 sabores elegidos para este ítem
       sabores: { nombre: string } | null;
-      }>;
+    }>;
   }>;
 }
 
@@ -268,7 +268,7 @@ export default function PedidosPage() {
           productos (
             nombre,
             precio
-            ),
+          ),
           detalle_pedido_sabores (
             sabores ( nombre )
           )
@@ -599,7 +599,10 @@ export default function PedidosPage() {
           detalle_pedidos (
             cantidad,
             notas,
-            productos (nombre, precio)
+            productos (nombre, precio),
+            detalle_pedido_sabores (
+              sabores ( nombre )
+            )
           )
         `)
         .eq('id', pedidoId)
@@ -649,7 +652,11 @@ export default function PedidosPage() {
           cantidad: d.cantidad,
           nombre: d.productos.nombre,
           precio: d.productos.precio,
-          notas: d.notas
+          notas: d.notas,
+          // 🆕 Nombres de los sabores elegidos para este ítem (si tiene)
+          sabores: (d.detalle_pedido_sabores || [])
+            .map((ds: any) => ds.sabores?.nombre)
+            .filter(Boolean)
         })),
         total: pedido.total,
         es_domicilio: pedido.es_domicilio,
@@ -837,7 +844,10 @@ export default function PedidosPage() {
         detalle_pedidos (
           cantidad,
           notas,
-          productos (nombre, precio)
+          productos (nombre, precio),
+          detalle_pedido_sabores (
+            sabores ( nombre )
+          )
         )
       `)
       .eq('id', pedidoId)
@@ -895,7 +905,11 @@ export default function PedidosPage() {
         cantidad: d.cantidad,
         nombre: d.productos.nombre,
         precio: d.productos.precio,
-        notas: d.notas
+        notas: d.notas,
+        // 🆕 Nombres de los sabores elegidos para este ítem (si tiene)
+        sabores: (d.detalle_pedido_sabores || [])
+          .map((ds: any) => ds.sabores?.nombre)
+          .filter(Boolean)
       })),
       total: pedido.total,
       es_domicilio: pedido.es_domicilio,
