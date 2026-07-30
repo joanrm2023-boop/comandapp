@@ -524,6 +524,10 @@ export default function PedidoDomicilioPublico() {
     );
   };
 
+  const eliminarItemDelCarrito = (itemId: string) => {
+    setPedido((prev) => prev.filter((i) => i.id !== itemId));
+  };
+
   const obtenerCantidad = (productoId: string) => pedido.find((i) => i.producto.id === productoId)?.cantidad ?? 0;
 
   const calcularSubtotal = () => pedido.reduce((sum, i) => sum + i.producto.precio * i.cantidad, 0);
@@ -1115,7 +1119,12 @@ export default function PedidoDomicilioPublico() {
                     )}
                     {item.notas && <p className="text-orange-500 text-xs italic">• {item.notas}</p>}
                   </div>
-                  <span className="font-semibold text-gray-700">${(item.producto.precio * item.cantidad).toLocaleString()}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-700">${(item.producto.precio * item.cantidad).toLocaleString()}</span>
+                    <button onClick={() => eliminarItemDelCarrito(item.id)} className="text-gray-400 hover:text-red-500 p-1">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
