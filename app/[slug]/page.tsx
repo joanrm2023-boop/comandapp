@@ -1048,7 +1048,7 @@ export default function PedidoDomicilioPublico() {
                                     </span>
                                   )}
                                 </div>
-                                {p.descripcion && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{p.descripcion}</p>}
+                                {p.descripcion && <p className="text-xs text-gray-400 line-clamp-3 mt-0.5">{p.descripcion}</p>}
                                 <p className="text-green-700 font-bold text-sm mt-1">${p.precio.toLocaleString()}</p>
                               </div>
 
