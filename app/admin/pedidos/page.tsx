@@ -167,15 +167,17 @@ export default function PedidosPage() {
     return { inicio, fin };
   };
 
+ useEffect(() => {
+  cargarPedidos();
+}, [filtroFecha, fechaInicio, fechaFin]);
+
   useEffect(() => {
-    console.log('🟢 INICIANDO: useEffect de Realtime');
-    
-    cargarPedidos();
-    
-    // Obtener negocio_id para filtrar Realtime
+    let channel: any = null;
+    let activo = true;
+
     const setupRealtime = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !activo) return;
 
       const { data: usuarioData } = await supabase
         .from('usuarios')
@@ -183,17 +185,16 @@ export default function PedidosPage() {
         .eq('auth_user_id', user.id)
         .single();
 
-      if (!usuarioData) return;
+      if (!usuarioData || !activo) return;
 
       const negocioId = usuarioData.negocio_id;
 
-      // Escuchar nuevos pedidos DEL NEGOCIO
-      const subscription = supabase
+      channel = supabase
         .channel('pedidos-channel')
-        .on('postgres_changes', 
-          { 
-            event: 'INSERT', 
-            schema: 'public', 
+        .on('postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
             table: 'pedidos',
             filter: `negocio_id=eq.${negocioId}`
           },
@@ -206,15 +207,18 @@ export default function PedidosPage() {
         .subscribe((status) => {
           console.log('🟢 Estado de suscripción Realtime:', status);
         });
-
-      return () => {
-        console.log('🟢 LIMPIANDO: Cerrando suscripción Realtime');
-        subscription.unsubscribe();
-      };
     };
 
     setupRealtime();
-  }, [filtroFecha, fechaInicio, fechaFin]);
+
+    return () => {
+      activo = false;
+      if (channel) {
+        console.log('🟢 LIMPIANDO: Cerrando suscripción Realtime');
+        supabase.removeChannel(channel);
+      }
+    };
+  }, []);
 
   const cargarPedidos = async () => {
   try {
@@ -611,7 +615,7 @@ export default function PedidosPage() {
       // Obtener negocio
       const { data: negocioData } = await supabase
         .from('negocios')
-        .select('nombre, telefono, direccion')
+        .select('nombre, telefono, direccion, ciudad')
         .eq('id', pedido.negocio_id)
         .single();
 
@@ -854,7 +858,7 @@ export default function PedidosPage() {
     // Obtener datos del negocio
     const { data: negocioData } = await supabase
       .from('negocios')
-      .select('nombre, telefono, direccion')
+      .select('nombre, telefono, direccion, ciudad')
       .eq('id', pedido.negocio_id)
       .single();
 
