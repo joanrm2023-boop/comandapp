@@ -12,6 +12,10 @@
  *
  * No toca precio, categoría ni activo/inactivo — eso sigue viviendo en
  * /admin/menu. Este panel es solo para lo que enriquece la vista pública.
+ *
+ * Los sabores de cada producto (creados/editados en /admin/menu) se
+ * muestran aquí solo de forma informativa, para que el admin vea qué
+ * verá el cliente en la página pública — no se editan desde aquí.
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -37,7 +41,13 @@ import {
   Eye,
   EyeOff,
   MapPin,
+  Soup,
 } from "lucide-react";
+
+interface Sabor {
+  id: string;
+  nombre: string;
+}
 
 interface Producto {
   id: string;
@@ -48,6 +58,8 @@ interface Producto {
   categoria_id: string;
   visible_en_slug: boolean;
   orden: number;
+  max_sabores?: number;
+  sabores?: Sabor[];
   categorias?: { nombre: string; icono: string; color: string } | null;
 }
 
@@ -166,7 +178,7 @@ export default function PaginaDomiciliosAdmin() {
 
       const { data: productosData } = await supabase
         .from("productos")
-        .select(`id, nombre, precio, imagen_url, descripcion, categoria_id, visible_en_slug, orden, categorias ( nombre, icono, color )`)
+        .select(`id, nombre, precio, imagen_url, descripcion, categoria_id, visible_en_slug, orden, max_sabores, categorias ( nombre, icono, color )`)
         .eq("negocio_id", usuarioData.negocio_id)
         .eq("activo", true)
         .order("orden", { ascending: true });
@@ -178,7 +190,30 @@ export default function PaginaDomiciliosAdmin() {
         .eq("activo", true)
         .order("orden", { ascending: true });
 
-      const lista = (productosData as any) ?? [];
+      let lista = (productosData as any) ?? [];
+
+      // 🆕 Traer los sabores asignados a estos productos (solo informativo aquí)
+      if (lista.length > 0) {
+        const idsProductos = lista.map((p: Producto) => p.id);
+
+        const { data: relacionesSabores } = await supabase
+          .from("producto_sabores")
+          .select("producto_id, sabores ( id, nombre )")
+          .in("producto_id", idsProductos);
+
+        const saboresPorProducto: Record<string, Sabor[]> = {};
+        (relacionesSabores as any[] ?? []).forEach((r) => {
+          if (!r.sabores) return;
+          if (!saboresPorProducto[r.producto_id]) saboresPorProducto[r.producto_id] = [];
+          saboresPorProducto[r.producto_id].push(r.sabores);
+        });
+
+        lista = lista.map((p: Producto) => ({
+          ...p,
+          sabores: saboresPorProducto[p.id] ?? [],
+        }));
+      }
+
       setProductos(lista);
       setCategoriasOrdenadas((categoriasData as any) ?? []);
 
@@ -935,7 +970,7 @@ export default function PaginaDomiciliosAdmin() {
             <h2 className="font-bold text-white">Fotos y descripciones del menú</h2>
           </div>
           <p className="text-zinc-500 text-xs -mt-2">
-            Esto se ve reflejado en tu página pública de domicilios. Para cambiar precio o categoría, ve a la sección Menú.
+            Esto se ve reflejado en tu página pública de domicilios. Para cambiar precio, categoría o sabores, ve a la sección Menú.
           </p>
           <p className="text-zinc-600 text-xs flex items-center gap-1.5 -mt-1">
             <GripVertical className="w-3 h-3" /> Usa las flechas junto a cada categoría para cambiar el orden en que se ven en tu página pública.
@@ -1123,6 +1158,17 @@ export default function PaginaDomiciliosAdmin() {
                                     placeholder="Descripción corta (ej: carne, queso, lechuga...)"
                                     className="w-full mt-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-orange-500 resize-none min-h-[50px]"
                                   />
+
+                                  {/* 🆕 Sabores del producto — solo informativo, se editan en /admin/menu */}
+                                  {p.sabores && p.sabores.length > 0 && (
+                                    <div className="mt-2 flex items-start gap-1.5">
+                                      <Soup className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
+                                      <p className="text-xs text-purple-300">
+                                        Sabores: {p.sabores.map((s) => s.nombre).join(", ")}
+                                        {p.max_sabores ? ` (máx. ${p.max_sabores})` : ''}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 

@@ -11,12 +11,18 @@
  * - Barra de progreso de 2 pasos: Menú → Datos y pago.
  * - Aviso de horario/estado abierto-cerrado.
  * - Badge opcional "Más pedido" por producto (campo `destacado`).
+ * - 🆕 Selección de sabores (chips) para productos que los tengan
+ *   configurados (ej: pizzas), respetando el máximo permitido por
+ *   producto (1 = un solo sabor, 2 = hasta mitad y mitad).
  *
  * Pendiente de tu lado (no lo resuelve este archivo):
  * - RLS de INSERT público (clientes, pedidos, detalle_pedidos).
  * - Columna opcional `imagen_url` en productos y `imagen_portada`/
  *   `horario_apertura`/`horario_cierre` en negocios, si quieres usarlas
  *   (el archivo ya contempla que puedan no existir y no rompe si faltan).
+ * - 🆕 El RPC `crear_pedido_publico` debe actualizarse para aceptar e
+ *   insertar los sabores elegidos por ítem (ver comentario junto a
+ *   `itemsParaRpc` en `enviarPedido`).
  */
 
 import { useState, useMemo, useEffect } from "react";
@@ -65,14 +71,37 @@ interface Producto {
   destacado?: boolean;
   visible_en_slug: boolean;
   orden: number;
+  max_sabores?: number;
   categorias?: { id: string; nombre: string; icono: string; color: string } | null;
 }
 
+// 🆕 Sabor del catálogo
+interface Sabor {
+  id: string;
+  nombre: string;
+}
+
 interface ItemPedido {
+  id: string; // 🆕 identificador único de esta línea del carrito (necesario porque un mismo producto con sabores puede tener varias líneas distintas, ej: 2x Carnes + 1x Champiñones)
   producto: Producto;
   cantidad: number;
   notas: string;
+  sabores?: Sabor[]; // 🆕 sabores elegidos para este ítem (si el producto los tiene)
 }
+
+// 🆕 Compara dos listas de sabores sin importar el orden, para saber si
+// dos líneas del carrito representan exactamente la misma combinación.
+const mismaCombinacionSabores = (a?: Sabor[], b?: Sabor[]): boolean => {
+  const idsA = (a ?? []).map((s) => s.id).sort();
+  const idsB = (b ?? []).map((s) => s.id).sort();
+  if (idsA.length !== idsB.length) return false;
+  return idsA.every((id, i) => id === idsB[i]);
+};
+
+const generarIdItem = () =>
+  (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 interface GrupoProductos {
   productos: Producto[];
@@ -109,6 +138,9 @@ export default function PedidoDomicilioPublico() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [mesaDomicilioId, setMesaDomicilioId] = useState<string | null>(null);
 
+  // 🆕 Sabores disponibles por producto: { [producto_id]: Sabor[] }
+  const [saboresPorProducto, setSaboresPorProducto] = useState<Record<string, Sabor[]>>({});
+
   const [loading, setLoading] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -126,6 +158,7 @@ export default function PedidoDomicilioPublico() {
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [cantidadTemp, setCantidadTemp] = useState(1);
   const [notasTemp, setNotasTemp] = useState("");
+  const [saboresSeleccionadosTemp, setSaboresSeleccionadosTemp] = useState<string[]>([]); // 🆕 ids elegidos en el modal
   const [imagenAmpliada, setImagenAmpliada] = useState<{ url: string; nombre: string } | null>(null);
 
   const [nombreCliente, setNombreCliente] = useState("");
@@ -240,7 +273,7 @@ export default function PedidoDomicilioPublico() {
 
       const { data: productosData } = await supabase
         .from("productos")
-        .select(`id, nombre, precio, activo, categoria_id, descripcion, imagen_url, visible_en_slug, orden,
+        .select(`id, nombre, precio, activo, categoria_id, descripcion, imagen_url, visible_en_slug, orden, max_sabores,
                  categorias ( id, nombre, icono, color )`)
         .eq("activo", true)
         .eq("visible_en_slug", true)
@@ -275,6 +308,29 @@ export default function PedidoDomicilioPublico() {
       });
 
       setProductos(productosFinal);
+
+      // 🆕 Traer los sabores asignados a los productos que los tengan
+      // (producto_sabores → sabores), para mostrarlos como chips
+      // seleccionables en el modal.
+      const idsConSabores = productosFinal
+        .filter((p: Producto) => (p.max_sabores ?? 0) > 0)
+        .map((p: Producto) => p.id);
+
+      if (idsConSabores.length > 0) {
+        const { data: relacionesSabores } = await supabase
+          .from("producto_sabores")
+          .select("producto_id, sabores ( id, nombre )")
+          .in("producto_id", idsConSabores);
+
+        const mapa: Record<string, Sabor[]> = {};
+        (relacionesSabores as any[] ?? []).forEach((r) => {
+          if (!r.sabores) return;
+          if (!mapa[r.producto_id]) mapa[r.producto_id] = [];
+          mapa[r.producto_id].push(r.sabores);
+        });
+        setSaboresPorProducto(mapa);
+      }
+
       setMesaDomicilioId(mesaData.id);
       if (catsFinal.length > 0) setCategoriasAbiertas(new Set([catsFinal[0].nombre]));
     } catch (err) {
@@ -346,25 +402,114 @@ export default function PedidoDomicilioPublico() {
       return;
     }
     setProductoSeleccionado(producto);
-    const existente = pedido.find((i) => i.producto.id === producto.id);
-    setCantidadTemp(existente?.cantidad ?? 1);
-    setNotasTemp(existente?.notas ?? "");
+
+    const tieneSabores = (saboresPorProducto[producto.id]?.length ?? 0) > 0;
+
+    if (tieneSabores) {
+      // 🆕 Un producto con sabores puede tener varias líneas distintas en el
+      // carrito (ej: 2x Carnes + 1x Champiñones), así que cada vez que se
+      // toca la tarjeta se abre el modal en modo "agregar nueva línea",
+      // sin precargar ninguna combinación existente.
+      setCantidadTemp(1);
+      setNotasTemp("");
+      setSaboresSeleccionadosTemp([]);
+    } else {
+      // Sin sabores: comportamiento original, edita la única línea de este producto
+      const existente = pedido.find((i) => i.producto.id === producto.id);
+      setCantidadTemp(existente?.cantidad ?? 1);
+      setNotasTemp(existente?.notas ?? "");
+      setSaboresSeleccionadosTemp([]);
+    }
+
     setModalNotasOpen(true);
+  };
+
+  // 🆕 Marca/desmarca un sabor en el modal, respetando el máximo del producto
+  const toggleSaborTemp = (saborId: string) => {
+    const max = productoSeleccionado?.max_sabores ?? 0;
+
+    setSaboresSeleccionadosTemp((prev) => {
+      const yaEsta = prev.includes(saborId);
+
+      if (yaEsta) {
+        return prev.filter((id) => id !== saborId);
+      }
+
+      if (max === 1) {
+        // Comportamiento tipo radio: el nuevo reemplaza al anterior
+        return [saborId];
+      }
+
+      if (prev.length >= max) {
+        // Ya alcanzó el máximo (ej. 2 de 2), no se agrega uno más
+        return prev;
+      }
+
+      return [...prev, saborId];
+    });
   };
 
   const confirmarProducto = () => {
     if (!productoSeleccionado || cantidadTemp <= 0) return;
+
+    // 🆕 Si el producto tiene sabores configurados, exigir al menos uno
+    const saboresDisponibles = saboresPorProducto[productoSeleccionado.id] ?? [];
+    if (saboresDisponibles.length > 0 && saboresSeleccionadosTemp.length === 0) {
+      toast.error("Elige al menos un sabor para este producto");
+      return;
+    }
+
+    const saboresElegidos = saboresDisponibles.filter((s) => saboresSeleccionadosTemp.includes(s.id));
+    const tieneSabores = saboresDisponibles.length > 0;
+
     setPedido((prev) => {
+      if (tieneSabores) {
+        // 🆕 Buscar si ya existe una línea con EXACTAMENTE la misma
+        // combinación de sabores y la misma nota para este producto —
+        // si existe, se le suma la cantidad; si no, se agrega como
+        // línea nueva (así conviven "2x Carnes" y "1x Champiñones").
+        const idxExistente = prev.findIndex(
+          (i) =>
+            i.producto.id === productoSeleccionado.id &&
+            mismaCombinacionSabores(i.sabores, saboresElegidos) &&
+            (i.notas || "").trim() === notasTemp.trim()
+        );
+
+        if (idxExistente !== -1) {
+          return prev.map((i, idx) =>
+            idx === idxExistente ? { ...i, cantidad: i.cantidad + cantidadTemp } : i
+          );
+        }
+
+        return [
+          ...prev,
+          {
+            id: generarIdItem(),
+            producto: productoSeleccionado,
+            cantidad: cantidadTemp,
+            notas: notasTemp,
+            sabores: saboresElegidos,
+          },
+        ];
+      }
+
+      // Sin sabores: comportamiento original, una sola línea por producto
       const existe = prev.find((i) => i.producto.id === productoSeleccionado.id);
       if (existe) {
         return prev.map((i) =>
-          i.producto.id === productoSeleccionado.id ? { ...i, cantidad: cantidadTemp, notas: notasTemp } : i
+          i.producto.id === productoSeleccionado.id
+            ? { ...i, cantidad: cantidadTemp, notas: notasTemp, sabores: saboresElegidos }
+            : i
         );
       }
-      return [...prev, { producto: productoSeleccionado, cantidad: cantidadTemp, notas: notasTemp }];
+      return [
+        ...prev,
+        { id: generarIdItem(), producto: productoSeleccionado, cantidad: cantidadTemp, notas: notasTemp, sabores: saboresElegidos },
+      ];
     });
     setModalNotasOpen(false);
     setProductoSeleccionado(null);
+    setSaboresSeleccionadosTemp([]);
   };
 
   const cambiarCantidad = (productoId: string, delta: number) => {
@@ -405,7 +550,13 @@ export default function PedidoDomicilioPublico() {
     }
 
     const itemsTexto = pedido
-      .map((item) => `${item.cantidad}x ${item.producto.nombre}${item.notas ? ` (${item.notas})` : ""}`)
+      .map((item) => {
+        // 🆕 Incluir sabores elegidos junto a la nota del ítem, si aplica
+        const saboresTexto = item.sabores && item.sabores.length > 0
+          ? ` [${item.sabores.map((s) => s.nombre).join(" / ")}]`
+          : "";
+        return `${item.cantidad}x ${item.producto.nombre}${saboresTexto}${item.notas ? ` (${item.notas})` : ""}`;
+      })
       .join("\n");
 
     const mensaje =
@@ -481,12 +632,16 @@ export default function PedidoDomicilioPublico() {
       // no dependa de ninguna política RLS adicional para anon —
       // la subconsulta que se necesitaría ahí siempre chocaría con el
       // RLS de `pedidos` (anon no tiene SELECT sobre esa tabla, a propósito).
+      // 🆕 sabor_ids: se agrega para que el RPC también inserte la
+      // relación en detalle_pedido_sabores. El RPC crear_pedido_publico
+      // debe actualizarse para leer este campo (ver nota al inicio del archivo).
       const itemsParaRpc = pedido.map((item) => ({
         producto_id: item.producto.id,
         cantidad: item.cantidad,
         precio_unitario: item.producto.precio,
         subtotal: item.producto.precio * item.cantidad,
         notas: item.notas || null,
+        sabor_ids: item.sabores?.map((s) => s.id) ?? [],
       }));
 
       const { data: pedidoRpcData, error: errPedido } = await supabase.rpc(
@@ -682,7 +837,7 @@ export default function PedidoDomicilioPublico() {
           <p className="text-gray-600 mb-1">
             Pedido <span className="font-bold text-orange-600">#{pedidoConfirmado.numero}</span>
           </p>
-          <p className="text-gray-500 text-sm mb-5">Ya está en cocina, te lo llevamos pronto.</p>
+          <p className="text-gray-500 text-sm mb-5">Ya está en cocina, te lo llevamos pronto. El costo de tu domicilio depende de la distancia, te lo confirmamos ahora mismo por WhatsApp, antes de despachar tu pedido.</p>
 
           {linkWhatsapp ? (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
@@ -860,6 +1015,13 @@ export default function PedidoDomicilioPublico() {
                       <div className="divide-y divide-gray-100 border-t border-gray-100">
                         {grupo.productos.map((p) => {
                           const cantidad = obtenerCantidad(p.id);
+                          // 🆕 Si el producto tiene sabores, puede haber varias líneas
+                          // en el carrito (una por combinación de sabor); sumamos el
+                          // total solo para mostrar la insignia, no para el stepper.
+                          const tieneSabores = (saboresPorProducto[p.id]?.length ?? 0) > 0;
+                          const cantidadTotalConSabores = tieneSabores
+                            ? pedido.filter((i) => i.producto.id === p.id).reduce((s, i) => s + i.cantidad, 0)
+                            : 0;
                           return (
                             <div key={p.id} onClick={() => abrirNotas(p)} className="flex items-center gap-3 p-4 cursor-pointer hover:bg-orange-50/50 transition">
                               {p.imagen_url ? (
@@ -890,7 +1052,19 @@ export default function PedidoDomicilioPublico() {
                                 <p className="text-green-700 font-bold text-sm mt-1">${p.precio.toLocaleString()}</p>
                               </div>
 
-                              {cantidad > 0 ? (
+                              {tieneSabores ? (
+                                // 🆕 Producto con sabores: siempre abre el modal para elegir
+                                // sabor (puede haber varias combinaciones distintas en el
+                                // carrito), con una insignia mostrando el total ya agregado.
+                                <button className="relative shrink-0 border-2 border-orange-500 text-orange-500 rounded-full w-8 h-8 flex items-center justify-center">
+                                  <Plus className="w-4 h-4" />
+                                  {cantidadTotalConSabores > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                                      {cantidadTotalConSabores}
+                                    </span>
+                                  )}
+                                </button>
+                              ) : cantidad > 0 ? (
                                 <div className="shrink-0 bg-orange-500 rounded-full flex items-center gap-2 px-1 py-1">
                                   <button onClick={(e) => { e.stopPropagation(); cambiarCantidad(p.id, -1); }} className="text-white p-1">
                                     <Minus className="w-3.5 h-3.5" />
@@ -933,9 +1107,12 @@ export default function PedidoDomicilioPublico() {
             <h3 className="font-bold text-gray-800 mb-3 text-sm">Tu pedido</h3>
             <div className="space-y-2">
               {pedido.map((item) => (
-                <div key={item.producto.id} className="flex justify-between items-start text-sm border-b border-gray-50 pb-2 last:border-0">
+                <div key={item.id} className="flex justify-between items-start text-sm border-b border-gray-50 pb-2 last:border-0">
                   <div>
                     <p className="font-medium text-gray-800">{item.cantidad}x {item.producto.nombre}</p>
+                    {item.sabores && item.sabores.length > 0 && (
+                      <p className="text-purple-500 text-xs">🍕 {item.sabores.map((s) => s.nombre).join(" / ")}</p>
+                    )}
                     {item.notas && <p className="text-orange-500 text-xs italic">• {item.notas}</p>}
                   </div>
                   <span className="font-semibold text-gray-700">${(item.producto.precio * item.cantidad).toLocaleString()}</span>
@@ -1033,7 +1210,7 @@ export default function PedidoDomicilioPublico() {
               <span className="font-bold text-orange-600 text-xl">${calcularTotal().toLocaleString()}</span>
             </div>
             <p className="text-xs text-gray-400 pt-1">
-              El costo de domicilio lo confirma el negocio al recibir tu pedido.
+              El costo de domicilio lo confirma el negocio al recibir tu pedido (Entre $1.000 y $4.500 de acuerdo a la distancia).
             </p>
 
             {(negocio?.pedido_minimo ?? 0) > 0 && calcularSubtotal() < (negocio?.pedido_minimo ?? 0) && (
@@ -1138,6 +1315,44 @@ export default function PedidoDomicilioPublico() {
           <div className="bg-white rounded-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-1">{productoSeleccionado.nombre}</h3>
             <p className="text-green-700 font-bold text-sm mb-3">${productoSeleccionado.precio.toLocaleString()}</p>
+
+            {/* 🆕 Chips de sabores, solo si el producto tiene sabores configurados */}
+            {(saboresPorProducto[productoSeleccionado.id]?.length ?? 0) > 0 && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold text-gray-600 mb-1.5">
+                  {productoSeleccionado.max_sabores === 1
+                    ? "Elige tu sabor"
+                    : `Elige 1 o ${productoSeleccionado.max_sabores} sabores (ej: mitad y mitad)`}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {saboresPorProducto[productoSeleccionado.id].map((sabor) => {
+                    const seleccionado = saboresSeleccionadosTemp.includes(sabor.id);
+                    const alcanzoMaximo =
+                      !seleccionado &&
+                      (productoSeleccionado.max_sabores ?? 0) > 1 &&
+                      saboresSeleccionadosTemp.length >= (productoSeleccionado.max_sabores ?? 0);
+                    return (
+                      <button
+                        key={sabor.id}
+                        type="button"
+                        onClick={() => toggleSaborTemp(sabor.id)}
+                        disabled={alcanzoMaximo}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition ${
+                          seleccionado
+                            ? "border-purple-500 bg-purple-50 text-purple-700"
+                            : alcanzoMaximo
+                            ? "border-gray-100 text-gray-300 cursor-not-allowed"
+                            : "border-gray-200 text-gray-600"
+                        }`}
+                      >
+                        {sabor.nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-center gap-4 bg-gray-100 rounded-xl p-3 mb-3">
               <button onClick={() => setCantidadTemp(Math.max(1, cantidadTemp - 1))} className="p-1"><Minus className="w-4 h-4" /></button>
               <span className="text-xl font-bold w-8 text-center">{cantidadTemp}</span>

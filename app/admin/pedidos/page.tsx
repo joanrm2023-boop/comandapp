@@ -56,6 +56,9 @@ interface Pedido {
       nombre: string;
       precio: number;
     };
+    detalle_pedido_sabores?: Array<{   // 👈 agregar esto
+      sabores: { nombre: string } | null;
+      }>;
   }>;
 }
 
@@ -265,6 +268,9 @@ export default function PedidosPage() {
           productos (
             nombre,
             precio
+            ),
+          detalle_pedido_sabores (
+            sabores ( nombre )
           )
         )
       `)
@@ -1218,6 +1224,11 @@ export default function PedidosPage() {
                         <div className="flex-1">
                           <span className="text-orange-600 font-semibold">{detalle.cantidad}x</span>{' '}
                           <span className="text-zinc-900">{detalle.productos.nombre}</span>
+                          {detalle.detalle_pedido_sabores && detalle.detalle_pedido_sabores.length > 0 && (
+                            <p className="text-xs text-purple-600 italic ml-5">
+                              🍕 {detalle.detalle_pedido_sabores.map((ds) => ds.sabores?.nombre).filter(Boolean).join(' / ')}
+                            </p>
+                          )}
                           {detalle.notas && (
                             <p className="text-xs text-orange-600 italic ml-5">
                               • {detalle.notas}

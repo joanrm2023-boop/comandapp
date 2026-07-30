@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
-import { Loader2, DollarSign } from "lucide-react";
+import { Loader2, DollarSign, Plus, X } from "lucide-react";
 
 interface ModalProductoProps {
     open: boolean;
@@ -33,6 +33,7 @@ interface ModalProductoProps {
         precio: number;
         categoria_id: string;
         descripcion?: string | null;
+        max_sabores?: number;
     } | null;
     }
 
@@ -41,6 +42,11 @@ interface Categoria {
   nombre: string;
   icono: string;
   color: string;
+}
+
+interface Sabor {
+  id: string;
+  nombre: string;
 }
 
 export default function ModalProducto({ 
@@ -58,6 +64,13 @@ export default function ModalProducto({
   const [loadingCategorias, setLoadingCategorias] = useState(false);
   const [error, setError] = useState("");
 
+  // 🆕 Sabores de este producto
+  const [saboresCategoria, setSaboresCategoria] = useState<Sabor[]>([]);
+  const [saboresSeleccionados, setSaboresSeleccionados] = useState<string[]>([]);
+  const [maxSabores, setMaxSabores] = useState("1");
+  const [nuevoSaborNombre, setNuevoSaborNombre] = useState("");
+  const [agregandoSabor, setAgregandoSabor] = useState(false);
+
   // Cargar categorías cuando se abre el modal
   useEffect(() => {
     if (open) {
@@ -72,8 +85,22 @@ export default function ModalProducto({
         setPrecio(String(productoAEditar.precio));
         setCategoriaId(productoAEditar.categoria_id);
         setDescripcion(productoAEditar.descripcion || "");
+        setMaxSabores(String(productoAEditar.max_sabores && productoAEditar.max_sabores > 0 ? productoAEditar.max_sabores : 1));
+        cargarSaboresAsignados(productoAEditar.id);
+    } else if (open && !productoAEditar) {
+        setMaxSabores("1");
+        setSaboresSeleccionados([]);
     }
     }, [open, productoAEditar]);
+
+  // 🆕 Recargar el catálogo de sabores de la categoría cada vez que cambia la categoría seleccionada
+  useEffect(() => {
+    if (open && categoriaId) {
+      cargarSaboresDeCategoria(categoriaId);
+    } else {
+      setSaboresCategoria([]);
+    }
+  }, [open, categoriaId]);
 
   const cargarCategorias = async () => {
     try {
@@ -94,11 +121,109 @@ export default function ModalProducto({
     }
   };
 
+  // 🆕 Trae los sabores ya creados para la categoría seleccionada
+  const cargarSaboresDeCategoria = async (catId: string) => {
+    try {
+      const { data } = await supabase
+        .from('sabores')
+        .select('id, nombre')
+        .eq('activo', true)
+        .eq('categoria_id', catId)
+        .order('nombre');
+
+      setSaboresCategoria(data || []);
+    } catch (err) {
+      console.error('Error cargando sabores de la categoría:', err);
+    }
+  };
+
+  // 🆕 Trae los sabores ya asignados a este producto (modo editar)
+  const cargarSaboresAsignados = async (productoId: string) => {
+    try {
+      const { data } = await supabase
+        .from('producto_sabores')
+        .select('sabor_id')
+        .eq('producto_id', productoId);
+
+      setSaboresSeleccionados((data || []).map((r) => r.sabor_id));
+    } catch (err) {
+      console.error('Error cargando sabores asignados:', err);
+    }
+  };
+
+  // 🆕 Crea un sabor nuevo en el catálogo (ligado a la categoría actual) y lo marca de una vez para este producto
+  const agregarSaborNuevo = async () => {
+    if (!nuevoSaborNombre.trim()) return;
+    if (!categoriaId) {
+      setError("Selecciona una categoría primero");
+      return;
+    }
+
+    try {
+      setAgregandoSabor(true);
+      setError("");
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuario no autenticado');
+
+      const { data: usuarioData, error: usuarioError } = await supabase
+        .from('usuarios')
+        .select('negocio_id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (usuarioError || !usuarioData) throw new Error('No se pudo obtener el negocio del usuario');
+
+      const { data: nuevoSabor, error: insertError } = await supabase
+        .from('sabores')
+        .insert([{
+          nombre: nuevoSaborNombre.trim(),
+          categoria_id: categoriaId,
+          negocio_id: usuarioData.negocio_id,
+          activo: true,
+        }])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      setSaboresCategoria((prev) => [...prev, nuevoSabor]);
+      setSaboresSeleccionados((prev) => [...prev, nuevoSabor.id]);
+      setNuevoSaborNombre("");
+    } catch (err: any) {
+      console.error('Error creando sabor:', err);
+      setError(err?.message || 'Error al crear el sabor');
+    } finally {
+      setAgregandoSabor(false);
+    }
+  };
+
+  const toggleSabor = (saborId: string) => {
+    setSaboresSeleccionados((prev) =>
+      prev.includes(saborId) ? prev.filter((id) => id !== saborId) : [...prev, saborId]
+    );
+  };
+
+  // 🆕 Quita un sabor por completo del catálogo de la categoría (no solo de este producto)
+  const quitarSaborDelCatalogo = async (saborId: string) => {
+    try {
+      await supabase.from('sabores').update({ activo: false }).eq('id', saborId);
+      setSaboresCategoria((prev) => prev.filter((s) => s.id !== saborId));
+      setSaboresSeleccionados((prev) => prev.filter((id) => id !== saborId));
+    } catch (err) {
+      console.error('Error quitando sabor:', err);
+    }
+  };
+
   const limpiarFormulario = () => {
     setNombre("");
     setPrecio("");
     setCategoriaId("");
     setDescripcion("");
+    setMaxSabores("1");
+    setSaboresSeleccionados([]);
+    setSaboresCategoria([]);
+    setNuevoSaborNombre("");
     setError("");
   };
 
@@ -111,6 +236,31 @@ export default function ModalProducto({
   const handlePrecioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const valorFormateado = formatearPrecio(e.target.value);
     setPrecio(valorFormateado);
+  };
+
+  // 🆕 Guarda la relación producto-sabores y el máximo permitido
+  const sincronizarSabores = async (productoId: string) => {
+    await supabase.from('producto_sabores').delete().eq('producto_id', productoId);
+
+    if (saboresSeleccionados.length > 0) {
+      const { error: errorSabores } = await supabase
+        .from('producto_sabores')
+        .insert(
+          saboresSeleccionados.map((saborId) => ({
+            producto_id: productoId,
+            sabor_id: saborId,
+          }))
+        );
+
+      if (errorSabores) throw errorSabores;
+    }
+
+    const { error: errorMax } = await supabase
+      .from('productos')
+      .update({ max_sabores: saboresSeleccionados.length > 0 ? Number(maxSabores) : 0 })
+      .eq('id', productoId);
+
+    if (errorMax) throw errorMax;
   };
 
   const handleSubmit = async () => {
@@ -134,6 +284,8 @@ export default function ModalProducto({
         setLoading(true);
         setError("");
 
+        let productoId: string;
+
         if (productoAEditar) {
         // Modo EDITAR - UPDATE
         const { error: updateError } = await supabase
@@ -147,6 +299,8 @@ export default function ModalProducto({
             .eq('id', productoAEditar.id);
 
         if (updateError) throw updateError;
+
+        productoId = productoAEditar.id;
         } else {
           // Modo CREAR - INSERT
           // Obtener negocio_id del usuario actual
@@ -161,7 +315,7 @@ export default function ModalProducto({
 
           if (usuarioError || !usuarioData) throw new Error('No se pudo obtener el negocio del usuario');
 
-          const { error: insertError } = await supabase
+          const { data: nuevoProducto, error: insertError } = await supabase
               .from('productos')
               .insert([
               {
@@ -169,13 +323,21 @@ export default function ModalProducto({
                   precio: Number(precio),
                   categoria_id: categoriaId,
                   descripcion: descripcion.trim() || null,
-                  negocio_id: usuarioData.negocio_id,  // 🔥 ESTA ES LA LÍNEA NUEVA
+                  negocio_id: usuarioData.negocio_id,
                   activo: true
               }
-              ]);
+              ])
+              .select()
+              .single();
 
           if (insertError) throw insertError;
+          if (!nuevoProducto) throw new Error('No se pudo crear el producto');
+
+          productoId = nuevoProducto.id;
           }
+
+        // 🆕 Guardar sabores de este producto
+        await sincronizarSabores(productoId);
 
         // Éxito
         limpiarFormulario();
@@ -274,6 +436,79 @@ export default function ModalProducto({
               </Select>
             )}
           </div>
+
+          {/* 🆕 Sabores de este producto */}
+          {categoriaId && (
+            <div className="space-y-3 bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <Label>Sabores de este producto (opcional)</Label>
+
+              {/* Agregar sabor nuevo directo */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ej: Hawaiana, Manzana..."
+                  value={nuevoSaborNombre}
+                  onChange={(e) => setNuevoSaborNombre(e.target.value)}
+                  disabled={loading || agregandoSabor}
+                  className="h-10 bg-white"
+                  onKeyDown={(e) => e.key === 'Enter' && agregarSaborNuevo()}
+                />
+                <Button
+                  type="button"
+                  onClick={agregarSaborNuevo}
+                  disabled={loading || agregandoSabor || !nuevoSaborNombre.trim()}
+                  className="h-10 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shrink-0"
+                >
+                  {agregandoSabor ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                </Button>
+              </div>
+
+              {/* Lista de sabores existentes para esta categoría, con checkbox para marcar/desmarcar */}
+              {saboresCategoria.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                  {saboresCategoria.map((sabor) => (
+                    <div
+                      key={sabor.id}
+                      className="flex items-center gap-1.5 text-sm bg-white rounded-lg px-2 py-1.5 border border-gray-200"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={saboresSeleccionados.includes(sabor.id)}
+                        onChange={() => toggleSabor(sabor.id)}
+                        disabled={loading}
+                        className="shrink-0"
+                      />
+                      <span className="flex-1 truncate">{sabor.nombre}</span>
+                      <button
+                        type="button"
+                        onClick={() => quitarSaborDelCatalogo(sabor.id)}
+                        disabled={loading}
+                        className="text-gray-400 hover:text-red-600 shrink-0"
+                        title="Eliminar este sabor del catálogo"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Máximo de sabores, solo si hay al menos uno marcado */}
+              {saboresSeleccionados.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Máximo que puede combinar el cliente</Label>
+                  <Select value={maxSabores} onValueChange={setMaxSabores} disabled={loading}>
+                    <SelectTrigger className="h-9 bg-white text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 (un solo sabor)</SelectItem>
+                      <SelectItem value="2">Hasta 2 (mitad y mitad)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Descripción */}
           <div className="space-y-2">

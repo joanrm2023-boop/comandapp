@@ -38,6 +38,7 @@ interface Producto {
   imagen_url?: string | null;
   descripcion?: string | null;
   categoria_id: string;
+  max_sabores?: number;
   categorias?: {
     id: string;
     nombre: string;
@@ -123,6 +124,7 @@ export default function MenuPage() {
           imagen_url,
           descripcion,
           categoria_id,
+          max_sabores,
           categorias (
             id,
             nombre,
@@ -468,6 +470,12 @@ export default function MenuPage() {
                             </p>
                           </div>
 
+                          {producto.max_sabores ? (
+                            <p className="text-[11px] text-purple-600 font-medium">
+                              🍕 Hasta {producto.max_sabores} sabor{producto.max_sabores > 1 ? 'es' : ''}
+                            </p>
+                          ) : null}
+
                           <div className="flex gap-1.5 pt-1">
                             <Button 
                               variant="outline" 
@@ -522,7 +530,7 @@ export default function MenuPage() {
           categoriaAEditar={categoriaAEditar}
         />
 
-      {/* Modal de Producto */}
+      {/* Modal de Producto — aquí también se gestionan sus sabores */}
       <ModalProducto 
         open={modalProductoOpen || !!productoAEditar}
         onOpenChange={(open) => {
