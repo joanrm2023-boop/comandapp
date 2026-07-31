@@ -28,12 +28,20 @@ export default function Error({
 
     const registrarError = async () => {
       try {
-        await supabase.from("errores_frontend").insert({
+        const { error: errorSupabase } = await supabase.from("errores_frontend").insert({
           mensaje: error.message || "Error desconocido",
           stack: error.stack || null,
           pagina: typeof window !== "undefined" ? window.location.pathname : null,
           user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
         });
+
+        if (errorSupabase) {
+          // 🆕 supabase-js NO lanza excepción cuando el insert falla
+          // (ej: bloqueado por RLS) — devuelve { error } en la respuesta.
+          // Sin este chequeo explícito, un fallo aquí queda en silencio
+          // total, sin dejar rastro en ningún lado.
+          console.error("Supabase rechazó el insert en errores_frontend:", errorSupabase);
+        }
       } catch (errGuardando) {
         // Si ni siquiera esto funciona, no hay nada más que hacer —
         // al menos ya quedó en la consola con el console.error de arriba.
