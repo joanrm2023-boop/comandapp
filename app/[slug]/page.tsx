@@ -14,15 +14,15 @@
  * - 🆕 Selección de sabores (chips) para productos que los tengan
  *   configurados (ej: pizzas), respetando el máximo permitido por
  *   producto (1 = un solo sabor, 2 = hasta mitad y mitad).
+ * - 🆕 El envío por WhatsApp (intento directo a la app + cuenta
+ *   regresiva + botón de respaldo) se movió a un componente aparte:
+ *   components/pedido-publico/ConfirmacionPedidoWhatsapp.tsx
  *
  * Pendiente de tu lado (no lo resuelve este archivo):
  * - RLS de INSERT público (clientes, pedidos, detalle_pedidos).
  * - Columna opcional `imagen_url` en productos y `imagen_portada`/
  *   `horario_apertura`/`horario_cierre` en negocios, si quieres usarlas
  *   (el archivo ya contempla que puedan no existir y no rompe si faltan).
- * - 🆕 El RPC `crear_pedido_publico` debe actualizarse para aceptar e
- *   insertar los sabores elegidos por ítem (ver comentario junto a
- *   `itemsParaRpc` en `enviarPedido`).
  */
 
 import { useState, useMemo, useEffect } from "react";
@@ -43,11 +43,11 @@ import {
   ArrowLeft,
   Clock,
   Flame,
-  MessageCircle,
   Share2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast, Toaster } from "sonner";
+import ConfirmacionPedidoWhatsapp from "@/components/pedido-publico/ConfirmacionPedidoWhatsapp";
 
 // ---------- Tipos ----------
 interface Categoria {
@@ -147,7 +147,10 @@ export default function PedidoDomicilioPublico() {
   const [pedidoYaEnviado, setPedidoYaEnviado] = useState(false);
   const [pedidoConfirmado, setPedidoConfirmado] = useState<{ numero: number | string } | null>(null);
   const [linkWhatsapp, setLinkWhatsapp] = useState<string | null>(null);
-  const [segundosParaWhatsapp, setSegundosParaWhatsapp] = useState<number | null>(null);
+  // 🆕 Datos adicionales para que ConfirmacionPedidoWhatsapp pueda
+  // intentar abrir la app nativa (whatsapp://) directamente.
+  const [telefonoLimpioWhatsapp, setTelefonoLimpioWhatsapp] = useState<string | null>(null);
+  const [mensajeTextoWhatsapp, setMensajeTextoWhatsapp] = useState<string | null>(null);
 
   const [busqueda, setBusqueda] = useState("");
   const [categoriasAbiertas, setCategoriasAbiertas] = useState<Set<string>>(new Set());
@@ -200,45 +203,6 @@ export default function PedidoDomicilioPublico() {
       console.warn("No se pudo guardar el carrito:", err);
     }
   }, [pedido, slug]);
-
-  // Envío automático a WhatsApp: en cuanto se confirma el pedido y hay
-  // link disponible, arranca una cuenta regresiva de 3 segundos y
-  // redirige sola, sin necesidad de que el cliente toque ningún botón.
-  useEffect(() => {
-    if (!pedidoConfirmado || !linkWhatsapp) return;
-
-    setSegundosParaWhatsapp(3);
-    const intervalo = setInterval(() => {
-      setSegundosParaWhatsapp((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(intervalo);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    const timeout = setTimeout(() => {
-      // Se simula un clic real sobre un <a>, en vez de usar
-      // window.location.href, porque en iOS Safari la navegación
-      // programática con location.href puede corromper la codificación
-      // de los emojis del mensaje (aparecen como ◆? en WhatsApp).
-      // Un <a> "clickeado" preserva la misma ruta de codificación que
-      // usaba el botón manual anterior, que sí funcionaba bien.
-      const enlace = document.createElement("a");
-      enlace.href = linkWhatsapp;
-      enlace.target = "_blank";
-      enlace.rel = "noopener noreferrer";
-      document.body.appendChild(enlace);
-      enlace.click();
-      document.body.removeChild(enlace);
-    }, 3000);
-
-    return () => {
-      clearInterval(intervalo);
-      clearTimeout(timeout);
-    };
-  }, [pedidoConfirmado, linkWhatsapp]);
 
   const cargarNegocioYMenu = async () => {
     try {
@@ -541,6 +505,10 @@ export default function PedidoDomicilioPublico() {
   // cliente le dé "Enviar" desde su propio WhatsApp.
   // El número sale de negocios.telefono — cada negocio usa el suyo
   // automáticamente, sin tocar código.
+  // 🆕 Además de devolver el link ya armado, deja guardados el número
+  // limpio y el mensaje SIN codificar en el estado, para que
+  // ConfirmacionPedidoWhatsapp pueda intentar abrir la app nativa
+  // directo (whatsapp://) sin tener que reconstruir esta lógica.
   const construirLinkWhatsapp = (numeroPedido: number | string) => {
     if (!negocio?.telefono) return null;
 
@@ -575,6 +543,10 @@ export default function PedidoDomicilioPublico() {
       `━━━━━━━━━━━━━━━\n` +
       `▸ *Total:* $${calcularTotal().toLocaleString()}\n` +
       `▸ *Pago:* ${medioPago}`;
+
+    // 🆕 Guardar por separado para ConfirmacionPedidoWhatsapp
+    setTelefonoLimpioWhatsapp(numeroLimpio);
+    setMensajeTextoWhatsapp(mensaje);
 
     return `https://wa.me/${numeroLimpio}?text=${encodeURIComponent(mensaje)}`;
   };
@@ -637,8 +609,7 @@ export default function PedidoDomicilioPublico() {
       // la subconsulta que se necesitaría ahí siempre chocaría con el
       // RLS de `pedidos` (anon no tiene SELECT sobre esa tabla, a propósito).
       // 🆕 sabor_ids: se agrega para que el RPC también inserte la
-      // relación en detalle_pedido_sabores. El RPC crear_pedido_publico
-      // debe actualizarse para leer este campo (ver nota al inicio del archivo).
+      // relación en detalle_pedido_sabores.
       const itemsParaRpc = pedido.map((item) => ({
         producto_id: item.producto.id,
         cantidad: item.cantidad,
@@ -834,43 +805,19 @@ export default function PedidoDomicilioPublico() {
 
   if (pedidoConfirmado) {
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-sm w-full border border-gray-100">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">¡Pedido enviado!</h2>
-          <p className="text-gray-600 mb-1">
-            Pedido <span className="font-bold text-orange-600">#{pedidoConfirmado.numero}</span>
-          </p>
-          <p className="text-gray-500 text-sm mb-5">Ya está en cocina, te lo llevamos pronto. El costo de tu domicilio depende de la distancia, te lo confirmamos ahora mismo por WhatsApp, antes de despachar tu pedido.</p>
-
-          {linkWhatsapp ? (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-center gap-2 text-emerald-700 mb-1">
-                <MessageCircle className="w-5 h-5" />
-                <span className="font-semibold text-sm">
-                  {segundosParaWhatsapp && segundosParaWhatsapp > 0
-                    ? `Enviando a WhatsApp en ${segundosParaWhatsapp}...`
-                    : "Abriendo WhatsApp..."}
-                </span>
-              </div>
-              <p className="text-emerald-600 text-xs">
-                Tu pedido se enviará automáticamente al negocio por WhatsApp para confirmarlo.
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400 mb-3">
-              Este negocio aún no tiene un WhatsApp configurado. Contáctalo directamente para confirmar tu pedido.
-            </p>
-          )}
-
-          <button
-            onClick={() => { setPedidoConfirmado(null); setLinkWhatsapp(null); setPedidoYaEnviado(false); setSegundosParaWhatsapp(null); }}
-            className="bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold px-6 py-3 rounded-xl w-full"
-          >
-            Hacer otro pedido
-          </button>
-        </div>
-      </div>
+      <ConfirmacionPedidoWhatsapp
+        numeroPedido={pedidoConfirmado.numero}
+        linkWhatsapp={linkWhatsapp}
+        telefonoLimpio={telefonoLimpioWhatsapp}
+        mensajeTexto={mensajeTextoWhatsapp}
+        onNuevoPedido={() => {
+          setPedidoConfirmado(null);
+          setLinkWhatsapp(null);
+          setPedidoYaEnviado(false);
+          setTelefonoLimpioWhatsapp(null);
+          setMensajeTextoWhatsapp(null);
+        }}
+      />
     );
   }
 
