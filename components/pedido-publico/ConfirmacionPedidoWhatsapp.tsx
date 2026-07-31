@@ -18,6 +18,12 @@
  *   "¿No se abrió WhatsApp? Toca aquí" — un <a> real, para que un toque
  *   genuino del cliente garantice el envío incluso si el intento
  *   automático falla en algún celular particular.
+ * - 🆕 El intento de whatsapp:// queda envuelto en try/catch: si algo
+ *   ahí revienta (ej: navegadores integrados de Instagram/Facebook que
+ *   bloquean esquemas de app y lanzan excepción), en vez de tumbar toda
+ *   la página con la pantalla de error de Next.js, cae de inmediato al
+ *   link de wa.me de siempre — el pedido ya está guardado en ese punto,
+ *   lo único en riesgo es esta parte del envío por WhatsApp.
  */
 
 import { useEffect, useState } from "react";
@@ -80,45 +86,61 @@ export default function ConfirmacionPedidoWhatsapp({
     // codificación que un toque manual del usuario — es lo que ya
     // funcionaba bien antes para que los símbolos del mensaje no se
     // corrompieran en iOS Safari.
-    const enlace = document.createElement("a");
-    enlace.href = url;
-    enlace.target = "_blank";
-    enlace.rel = "noopener noreferrer";
-    document.body.appendChild(enlace);
-    enlace.click();
-    document.body.removeChild(enlace);
+    try {
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.target = "_blank";
+      enlace.rel = "noopener noreferrer";
+      document.body.appendChild(enlace);
+      enlace.click();
+      document.body.removeChild(enlace);
+    } catch (err) {
+      // Último recurso: si hasta esto falla (muy raro), al menos no
+      // tumbamos la página — el botón manual de abajo sigue disponible
+      // para que el cliente lo intente con un toque real.
+      console.warn("No se pudo abrir el link de WhatsApp automáticamente:", err);
+    }
   };
 
   const dispararEnvioWhatsapp = () => {
     if (!linkWhatsapp) return;
 
-    // En PC/escritorio: mismo comportamiento de siempre, directo a wa.me.
-    if (!esMobile() || !telefonoLimpio || !mensajeTexto) {
-      abrirConClicSimulado(linkWhatsapp);
-      return;
-    }
-
-    // En celular: se intenta abrir la app nativa directo, sin pasar
-    // por la página intermedia de wa.me.
-    const urlApp = `whatsapp://send?phone=${telefonoLimpio}&text=${encodeURIComponent(mensajeTexto)}`;
-
-    let yaSalioDeLaPagina = false;
-    const marcarSalida = () => {
-      if (document.hidden) yaSalioDeLaPagina = true;
-    };
-    document.addEventListener("visibilitychange", marcarSalida);
-
-    window.location.href = urlApp;
-
-    // Si después de ~1.8s la página sigue visible, el intento directo
-    // no funcionó (WhatsApp no instalado, o el navegador bloqueó el
-    // salto automático) — se cae al link de wa.me de siempre.
-    setTimeout(() => {
-      document.removeEventListener("visibilitychange", marcarSalida);
-      if (!yaSalioDeLaPagina && !document.hidden) {
+    try {
+      // En PC/escritorio: mismo comportamiento de siempre, directo a wa.me.
+      if (!esMobile() || !telefonoLimpio || !mensajeTexto) {
         abrirConClicSimulado(linkWhatsapp);
+        return;
       }
-    }, 1800);
+
+      // En celular: se intenta abrir la app nativa directo, sin pasar
+      // por la página intermedia de wa.me.
+      const urlApp = `whatsapp://send?phone=${telefonoLimpio}&text=${encodeURIComponent(mensajeTexto)}`;
+
+      let yaSalioDeLaPagina = false;
+      const marcarSalida = () => {
+        if (document.hidden) yaSalioDeLaPagina = true;
+      };
+      document.addEventListener("visibilitychange", marcarSalida);
+
+      window.location.href = urlApp;
+
+      // Si después de ~1.8s la página sigue visible, el intento directo
+      // no funcionó (WhatsApp no instalado, o el navegador bloqueó el
+      // salto automático) — se cae al link de wa.me de siempre.
+      setTimeout(() => {
+        document.removeEventListener("visibilitychange", marcarSalida);
+        if (!yaSalioDeLaPagina && !document.hidden) {
+          abrirConClicSimulado(linkWhatsapp);
+        }
+      }, 1800);
+    } catch (err) {
+      // 🆕 Si intentar whatsapp:// revienta (navegadores integrados
+      // restrictivos como el de Instagram/Facebook, o cualquier caso
+      // no previsto), caemos directo al link de wa.me de siempre en
+      // vez de dejar que el error tumbe toda la pantalla.
+      console.warn("Fallo al intentar abrir WhatsApp directo, usando wa.me de respaldo:", err);
+      abrirConClicSimulado(linkWhatsapp);
+    }
   };
 
   return (
