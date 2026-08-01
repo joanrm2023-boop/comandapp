@@ -108,6 +108,7 @@ interface GrupoProductos {
   config: { icono: string; color: string };
 }
 
+
 interface HorarioDia {
   apertura: string;
   cierre: string;
@@ -122,6 +123,7 @@ interface Negocio {
   telefono: string | null;
   direccion: string | null;
   pedido_minimo: number | null;
+  costo_domicilio: number | null;
   abierto: boolean | null;
   horarios: Record<string, HorarioDia> | null;
   mensaje_cierre_emergencia: string | null;
@@ -211,8 +213,7 @@ export default function PedidoDomicilioPublico() {
 
       const { data: negocioData, error: negocioError } = await supabase
         .from("negocios")
-        .select("id, nombre, logo_url, imagen_portada, telefono, direccion, activo, suspendido, pedido_minimo, abierto, horarios, mensaje_cierre_emergencia, imagen_fondo, zona_cobertura")
-        .eq("slug", slug)
+        .select("id, nombre, logo_url, imagen_portada, telefono, direccion, activo, suspendido, pedido_minimo, costo_domicilio, abierto, horarios, mensaje_cierre_emergencia, imagen_fondo, zona_cobertura")        .eq("slug", slug)
         .single();
 
       if (negocioError || !negocioData) {
@@ -225,6 +226,7 @@ export default function PedidoDomicilioPublico() {
       }
 
       setNegocio(negocioData);
+      setValorDomicilio(negocioData.costo_domicilio ?? 3000);
       const negocioId = negocioData.id;
 
       const { data: categoriasData } = await supabase
@@ -498,7 +500,7 @@ export default function PedidoDomicilioPublico() {
   // Esta página es exclusivamente de domicilio: no aplica propina
   // (misma regla que en MeseroPage/print-server), y el costo de
   // domicilio no lo pone el cliente — lo define el negocio manualmente.
-  const calcularTotal = () => calcularSubtotal();
+  const calcularTotal = () => calcularSubtotal() + valorDomicilio;
   const totalItems = pedido.reduce((s, i) => s + i.cantidad, 0);
 
   // Arma el link de wa.me con el resumen del pedido, listo para que el
@@ -601,7 +603,7 @@ export default function PedidoDomicilioPublico() {
 
       const clienteId = clienteIdData as string;
 
-      const totalGuardado = calcularSubtotal();
+      const totalGuardado = calcularTotal();
 
       // Los ítems se mandan junto con el pedido en la MISMA función
       // (SECURITY DEFINER), para que la inserción en detalle_pedidos
@@ -1161,13 +1163,15 @@ export default function PedidoDomicilioPublico() {
               <span>Subtotal</span>
               <span className="font-semibold text-gray-700">${calcularSubtotal().toLocaleString()}</span>
             </div>
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Domicilio</span>
+              <span className="font-semibold text-gray-700">${valorDomicilio.toLocaleString()}</span>
+            </div>  
             <div className="flex justify-between items-center pt-2 border-t border-gray-100">
               <span className="font-bold text-gray-900">Total</span>
               <span className="font-bold text-orange-600 text-xl">${calcularTotal().toLocaleString()}</span>
             </div>
-            <p className="text-xs text-gray-400 pt-1">
-              El costo de domicilio lo confirma el negocio al recibir tu pedido (Entre $1.000 y $4.500 de acuerdo a la distancia).
-            </p>
+            
 
             {(negocio?.pedido_minimo ?? 0) > 0 && calcularSubtotal() < (negocio?.pedido_minimo ?? 0) && (
               <p className="text-red-500 text-xs font-medium text-center pt-1">

@@ -36,6 +36,7 @@ import {
   ArrowDown,
   GripVertical,
   Wallet,
+  Truck,
   Clock,
   Power,
   Eye,
@@ -106,6 +107,11 @@ export default function PaginaDomiciliosAdmin() {
   const [pedidoMinimoInput, setPedidoMinimoInput] = useState("0");
   const [guardandoPedidoMinimo, setGuardandoPedidoMinimo] = useState(false);
 
+  // 🆕 Valor de domicilio (costo fijo de envío)
+  const [costoDomicilioActual, setCostoDomicilioActual] = useState(3000);
+  const [costoDomicilioInput, setCostoDomicilioInput] = useState("3000");
+  const [guardandoCostoDomicilio, setGuardandoCostoDomicilio] = useState(false);
+
   const [zonaCoberturaInput, setZonaCoberturaInput] = useState("");
   const [guardandoZonaCobertura, setGuardandoZonaCobertura] = useState(false);
 
@@ -152,7 +158,7 @@ export default function PaginaDomiciliosAdmin() {
 
       const { data: negocioData } = await supabase
         .from("negocios")
-        .select("slug, pedido_minimo, horarios, abierto, mensaje_cierre_emergencia, zona_cobertura")
+        .select("slug, pedido_minimo, costo_domicilio, horarios, abierto, mensaje_cierre_emergencia, zona_cobertura")
         .eq("id", usuarioData.negocio_id)
         .single();
 
@@ -162,6 +168,11 @@ export default function PaginaDomiciliosAdmin() {
         const minimo = negocioData.pedido_minimo ?? 0;
         setPedidoMinimoActual(minimo);
         setPedidoMinimoInput(String(minimo));
+
+        // 🆕 Valor de domicilio
+        const costoDom = negocioData.costo_domicilio ?? 3000;
+        setCostoDomicilioActual(costoDom);
+        setCostoDomicilioInput(String(costoDom));
 
         // Rellenar cualquier día faltante con valores por defecto
         const horariosGuardados = negocioData.horarios ?? {};
@@ -312,6 +323,32 @@ export default function PaginaDomiciliosAdmin() {
       toast.error("Error al guardar: " + (err?.message || "desconocido"));
     } finally {
       setGuardandoPedidoMinimo(false);
+    }
+  };
+
+  // 🆕 Guardar el valor de domicilio
+  const guardarCostoDomicilio = async () => {
+    const valor = parseFloat(costoDomicilioInput);
+    if (isNaN(valor) || valor < 0) {
+      toast.error("Ingresa un valor válido");
+      return;
+    }
+
+    try {
+      setGuardandoCostoDomicilio(true);
+      const { error } = await supabase
+        .from("negocios")
+        .update({ costo_domicilio: valor })
+        .eq("id", negocioId);
+
+      if (error) throw error;
+
+      setCostoDomicilioActual(valor);
+      toast.success("Valor de domicilio actualizado");
+    } catch (err: any) {
+      toast.error("Error al guardar: " + (err?.message || "desconocido"));
+    } finally {
+      setGuardandoCostoDomicilio(false);
     }
   };
 
@@ -789,6 +826,45 @@ export default function PaginaDomiciliosAdmin() {
 
           <p className="text-zinc-600 text-xs">
             Actual: ${pedidoMinimoActual.toLocaleString()}
+          </p>
+        </div>
+
+        {/* 🆕 Sección: valor de domicilio */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="bg-orange-500/10 p-2 rounded-lg">
+              <Truck className="w-4 h-4 text-orange-500" />
+            </div>
+            <h2 className="font-bold text-white">Valor de domicilio</h2>
+          </div>
+          <p className="text-zinc-500 text-xs -mt-1">
+            Este es el costo fijo que se le cobra al cliente por el envío, y se suma automáticamente al total de su pedido.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 flex items-center bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+              <span className="text-zinc-500 text-sm pl-3 pr-1">$</span>
+              <input
+                type="number"
+                min="0"
+                value={costoDomicilioInput}
+                onChange={(e) => setCostoDomicilioInput(e.target.value)}
+                className="flex-1 bg-transparent text-white text-sm py-2.5 pr-3 outline-none min-w-0"
+                placeholder="3000"
+              />
+            </div>
+            <button
+              onClick={guardarCostoDomicilio}
+              disabled={guardandoCostoDomicilio}
+              className="bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 shrink-0"
+            >
+              {guardandoCostoDomicilio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Guardar
+            </button>
+          </div>
+
+          <p className="text-zinc-600 text-xs">
+            Actual: ${costoDomicilioActual.toLocaleString()}
           </p>
         </div>
 
