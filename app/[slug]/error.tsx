@@ -70,6 +70,16 @@ export default function Error({
         >
           Reintentar
         </button>
+
+        {/* 🆕 Detalle técnico visible en pantalla — temporal, para poder
+            diagnosticar el error real con solo tomar una captura, sin
+            necesitar cable ni herramientas de depuración remota. */}
+        <div className="mt-4 pt-4 border-t border-gray-100 text-left">
+          <p className="text-[10px] font-mono text-gray-400 break-words">
+            {error.message || "Sin mensaje"}
+            {error.digest ? ` (digest: ${error.digest})` : ""}
+          </p>
+        </div>
       </div>
     </div>
   );
