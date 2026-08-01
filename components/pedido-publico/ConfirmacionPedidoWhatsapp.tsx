@@ -26,7 +26,7 @@
  *   lo único en riesgo es esta parte del envío por WhatsApp.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageCircle } from "lucide-react";
 
 interface ConfirmacionPedidoWhatsappProps {
@@ -55,6 +55,12 @@ export default function ConfirmacionPedidoWhatsapp({
   onNuevoPedido,
 }: ConfirmacionPedidoWhatsappProps) {
   const [segundosParaWhatsapp, setSegundosParaWhatsapp] = useState<number | null>(null);
+  // 🆕 Link oculto SIEMPRE presente en el árbol de React (nunca se crea
+  // ni se destruye a mano) — evita el error "insertBefore" que ocurría
+  // al manipular document.body directamente con createElement/appendChild/
+  // removeChild mientras React también maneja otros nodos ahí (ej: el
+  // <Toaster /> de sonner, que también vive como portal en <body>).
+  const linkOcultoRef = useRef<HTMLAnchorElement | null>(null);
 
   useEffect(() => {
     if (!linkWhatsapp) return;
@@ -82,18 +88,14 @@ export default function ConfirmacionPedidoWhatsapp({
   }, [linkWhatsapp]);
 
   const abrirConClicSimulado = (url: string) => {
-    // Un clic real simulado sobre un <a> preserva la misma ruta de
-    // codificación que un toque manual del usuario — es lo que ya
-    // funcionaba bien antes para que los símbolos del mensaje no se
-    // corrompieran en iOS Safari.
+    // 🆕 Ya no se crea ni se destruye ningún nodo — se reutiliza el
+    // mismo <a> oculto que React ya tiene montado (ver linkOcultoRef),
+    // solo se le cambia el destino y se dispara el clic.
     try {
-      const enlace = document.createElement("a");
-      enlace.href = url;
-      enlace.target = "_blank";
-      enlace.rel = "noopener noreferrer";
-      document.body.appendChild(enlace);
-      enlace.click();
-      document.body.removeChild(enlace);
+      if (linkOcultoRef.current) {
+        linkOcultoRef.current.href = url;
+        linkOcultoRef.current.click();
+      }
     } catch (err) {
       // Último recurso: si hasta esto falla (muy raro), al menos no
       // tumbamos la página — el botón manual de abajo sigue disponible
@@ -196,6 +198,11 @@ export default function ConfirmacionPedidoWhatsapp({
           Hacer otro pedido
         </button>
       </div>
+
+      {/* 🆕 Link oculto persistente — nunca se crea ni se destruye,
+          React lo mantiene montado siempre. Evita el error insertBefore
+          que causaba crear/borrar un <a> a mano sobre document.body. */}
+      <a ref={linkOcultoRef} target="_blank" rel="noopener noreferrer" className="hidden" aria-hidden="true" />
     </div>
   );
 }
