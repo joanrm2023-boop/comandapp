@@ -1296,11 +1296,11 @@ export default function PedidosPage() {
                         Cliente: <span className="font-semibold text-zinc-900">{pedido.clientes.nombre}</span>
                       </p>
                     )}
-                    {pedido.es_domicilio && pedido.clientes.telefono && (
-                          <p className="text-xs text-zinc-500">
-                            Tel: <span className="font-semibold text-zinc-900">{pedido.clientes.telefono}</span>
-                          </p>
-                        )}
+                    {pedido.es_domicilio && pedido.clientes?.telefono && (
+                      <p className="text-xs text-zinc-500">
+                        Tel: <span className="font-semibold text-zinc-900">{pedido.clientes.telefono}</span>
+                      </p>
+                    )}
                     {pedido.usuarios && (
                       <p className="text-xs text-zinc-500">
                         Atendió: <span className="font-semibold text-zinc-900">{pedido.usuarios.nombre}</span>
