@@ -39,6 +39,8 @@ interface Producto {
   descripcion?: string | null;
   categoria_id: string;
   max_sabores?: number;
+  porciones_min?: number | null;
+  porciones_max?: number | null;
   categorias?: {
     id: string;
     nombre: string;
@@ -125,6 +127,8 @@ export default function MenuPage() {
           descripcion,
           categoria_id,
           max_sabores,
+          porciones_min,
+          porciones_max,
           categorias (
             id,
             nombre,

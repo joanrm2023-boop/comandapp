@@ -53,11 +53,12 @@ interface Pedido {
     id: string;
     cantidad: number;
     notas: string | null;
+    porciones_elegidas: number | null; // 🆕
     productos: {
       nombre: string;
       precio: number;
     };
-    detalle_pedido_sabores?: Array<{   // 🆕 sabores elegidos para este ítem
+    detalle_pedido_sabores?: Array<{
       sabores: { nombre: string } | null;
     }>;
   }>;
@@ -267,6 +268,7 @@ export default function PedidosPage() {
           id,
           cantidad,
           notas,
+          porciones_elegidas,
           productos (
             nombre,
             precio
@@ -601,6 +603,7 @@ export default function PedidosPage() {
           detalle_pedidos (
             cantidad,
             notas,
+            porciones_elegidas,
             productos (nombre, precio),
             detalle_pedido_sabores (
               sabores ( nombre )
@@ -656,6 +659,7 @@ export default function PedidosPage() {
           nombre: d.productos.nombre,
           precio: d.productos.precio,
           notas: d.notas,
+          porciones: d.porciones_elegidas || null, // 🆕
           // 🆕 Nombres de los sabores elegidos para este ítem (si tiene)
           sabores: (d.detalle_pedido_sabores || [])
             .map((ds: any) => ds.sabores?.nombre)
@@ -847,6 +851,7 @@ export default function PedidosPage() {
         detalle_pedidos (
           cantidad,
           notas,
+          porciones_elegidas,
           productos (nombre, precio),
           detalle_pedido_sabores (
             sabores ( nombre )
@@ -910,6 +915,7 @@ export default function PedidosPage() {
         nombre: d.productos.nombre,
         precio: d.productos.precio,
         notas: d.notas,
+        porciones: d.porciones_elegidas || null, // 🆕
         // 🆕 Nombres de los sabores elegidos para este ítem (si tiene)
         sabores: (d.detalle_pedido_sabores || [])
           .map((ds: any) => ds.sabores?.nombre)
@@ -1245,6 +1251,11 @@ export default function PedidosPage() {
                           {detalle.detalle_pedido_sabores && detalle.detalle_pedido_sabores.length > 0 && (
                             <p className="text-xs text-purple-600 italic ml-5">
                               🍕 {detalle.detalle_pedido_sabores.map((ds) => ds.sabores?.nombre).filter(Boolean).join(' / ')}
+                            </p>
+                          )}
+                          {detalle.porciones_elegidas && (
+                            <p className="text-xs text-orange-600 italic ml-5">
+                              🔪 Cortar en {detalle.porciones_elegidas} porciones
                             </p>
                           )}
                           {detalle.notas && (

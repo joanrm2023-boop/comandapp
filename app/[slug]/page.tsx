@@ -14,6 +14,8 @@
  * - 🆕 Selección de sabores (chips) para productos que los tengan
  *   configurados (ej: pizzas), respetando el máximo permitido por
  *   producto (1 = un solo sabor, 2 = hasta mitad y mitad).
+ * - 🆕 Selección de porciones (chips) para productos con rango
+ *   configurado (ej: pizzas grandes), obligatoria igual que sabores.
  * - 🆕 El envío por WhatsApp (intento directo a la app + cuenta
  *   regresiva + botón de respaldo) se movió a un componente aparte:
  *   components/pedido-publico/ConfirmacionPedidoWhatsapp.tsx
@@ -72,6 +74,8 @@ interface Producto {
   visible_en_slug: boolean;
   orden: number;
   max_sabores?: number;
+  porciones_min?: number | null;
+  porciones_max?: number | null;
   categorias?: { id: string; nombre: string; icono: string; color: string } | null;
 }
 
@@ -82,11 +86,12 @@ interface Sabor {
 }
 
 interface ItemPedido {
-  id: string; // 🆕 identificador único de esta línea del carrito (necesario porque un mismo producto con sabores puede tener varias líneas distintas, ej: 2x Carnes + 1x Champiñones)
+  id: string;
   producto: Producto;
   cantidad: number;
   notas: string;
-  sabores?: Sabor[]; // 🆕 sabores elegidos para este ítem (si el producto los tiene)
+  sabores?: Sabor[];
+  porciones?: number; // 🆕
 }
 
 // 🆕 Compara dos listas de sabores sin importar el orden, para saber si
@@ -96,6 +101,13 @@ const mismaCombinacionSabores = (a?: Sabor[], b?: Sabor[]): boolean => {
   const idsB = (b ?? []).map((s) => s.id).sort();
   if (idsA.length !== idsB.length) return false;
   return idsA.every((id, i) => id === idsB[i]);
+};
+
+// 🆕 Genera las opciones de porciones de dos en dos entre min y max (ej: 4,6,8,10,12)
+const generarOpcionesPorciones = (min: number, max: number): number[] => {
+  const opciones: number[] = [];
+  for (let n = min; n <= max; n += 2) opciones.push(n);
+  return opciones;
 };
 
 const generarIdItem = () =>
@@ -164,6 +176,7 @@ export default function PedidoDomicilioPublico() {
   const [cantidadTemp, setCantidadTemp] = useState(1);
   const [notasTemp, setNotasTemp] = useState("");
   const [saboresSeleccionadosTemp, setSaboresSeleccionadosTemp] = useState<string[]>([]); // 🆕 ids elegidos en el modal
+  const [porcionesSeleccionadasTemp, setPorcionesSeleccionadasTemp] = useState<number | null>(null); // 🆕
   const [imagenAmpliada, setImagenAmpliada] = useState<{ url: string; nombre: string } | null>(null);
 
   const [nombreCliente, setNombreCliente] = useState("");
@@ -239,7 +252,7 @@ export default function PedidoDomicilioPublico() {
 
       const { data: productosData } = await supabase
         .from("productos")
-        .select(`id, nombre, precio, activo, categoria_id, descripcion, imagen_url, visible_en_slug, orden, max_sabores,
+        .select(`id, nombre, precio, activo, categoria_id, descripcion, imagen_url, visible_en_slug, orden, max_sabores, porciones_min, porciones_max,
                  categorias ( id, nombre, icono, color )`)
         .eq("activo", true)
         .eq("visible_en_slug", true)
@@ -370,21 +383,24 @@ export default function PedidoDomicilioPublico() {
     setProductoSeleccionado(producto);
 
     const tieneSabores = (saboresPorProducto[producto.id]?.length ?? 0) > 0;
+    const tienePorciones = producto.porciones_min != null && producto.porciones_max != null; // 🆕
 
-    if (tieneSabores) {
-      // 🆕 Un producto con sabores puede tener varias líneas distintas en el
+    if (tieneSabores || tienePorciones) {
+      // 🆕 Un producto con sabores/porciones puede tener varias líneas distintas en el
       // carrito (ej: 2x Carnes + 1x Champiñones), así que cada vez que se
       // toca la tarjeta se abre el modal en modo "agregar nueva línea",
       // sin precargar ninguna combinación existente.
       setCantidadTemp(1);
       setNotasTemp("");
       setSaboresSeleccionadosTemp([]);
+      setPorcionesSeleccionadasTemp(null); // 🆕
     } else {
-      // Sin sabores: comportamiento original, edita la única línea de este producto
+      // Sin sabores ni porciones: comportamiento original, edita la única línea de este producto
       const existente = pedido.find((i) => i.producto.id === producto.id);
       setCantidadTemp(existente?.cantidad ?? 1);
       setNotasTemp(existente?.notas ?? "");
       setSaboresSeleccionadosTemp([]);
+      setPorcionesSeleccionadasTemp(null); // 🆕
     }
 
     setModalNotasOpen(true);
@@ -425,19 +441,29 @@ export default function PedidoDomicilioPublico() {
       return;
     }
 
+    // 🆕 Si el producto tiene rango de porciones, exigir elegir una opción
+    const tienePorciones =
+      productoSeleccionado.porciones_min != null && productoSeleccionado.porciones_max != null;
+    if (tienePorciones && porcionesSeleccionadasTemp === null) {
+      toast.error("Elige en cuántas porciones dividirlo");
+      return;
+    }
+
     const saboresElegidos = saboresDisponibles.filter((s) => saboresSeleccionadosTemp.includes(s.id));
     const tieneSabores = saboresDisponibles.length > 0;
+    const porcionesElegidas = tienePorciones ? porcionesSeleccionadasTemp! : undefined; // 🆕
 
     setPedido((prev) => {
-      if (tieneSabores) {
+      if (tieneSabores || tienePorciones) {
         // 🆕 Buscar si ya existe una línea con EXACTAMENTE la misma
-        // combinación de sabores y la misma nota para este producto —
+        // combinación de sabores/porciones y la misma nota para este producto —
         // si existe, se le suma la cantidad; si no, se agrega como
         // línea nueva (así conviven "2x Carnes" y "1x Champiñones").
         const idxExistente = prev.findIndex(
           (i) =>
             i.producto.id === productoSeleccionado.id &&
             mismaCombinacionSabores(i.sabores, saboresElegidos) &&
+            i.porciones === porcionesElegidas &&
             (i.notas || "").trim() === notasTemp.trim()
         );
 
@@ -455,27 +481,29 @@ export default function PedidoDomicilioPublico() {
             cantidad: cantidadTemp,
             notas: notasTemp,
             sabores: saboresElegidos,
+            porciones: porcionesElegidas,
           },
         ];
       }
 
-      // Sin sabores: comportamiento original, una sola línea por producto
+      // Sin sabores ni porciones: comportamiento original, una sola línea por producto
       const existe = prev.find((i) => i.producto.id === productoSeleccionado.id);
       if (existe) {
         return prev.map((i) =>
           i.producto.id === productoSeleccionado.id
-            ? { ...i, cantidad: cantidadTemp, notas: notasTemp, sabores: saboresElegidos }
+            ? { ...i, cantidad: cantidadTemp, notas: notasTemp, sabores: saboresElegidos, porciones: porcionesElegidas }
             : i
         );
       }
       return [
         ...prev,
-        { id: generarIdItem(), producto: productoSeleccionado, cantidad: cantidadTemp, notas: notasTemp, sabores: saboresElegidos },
+        { id: generarIdItem(), producto: productoSeleccionado, cantidad: cantidadTemp, notas: notasTemp, sabores: saboresElegidos, porciones: porcionesElegidas },
       ];
     });
     setModalNotasOpen(false);
     setProductoSeleccionado(null);
     setSaboresSeleccionadosTemp([]);
+    setPorcionesSeleccionadasTemp(null); // 🆕
   };
 
   const cambiarCantidad = (productoId: string, delta: number) => {
@@ -529,7 +557,9 @@ export default function PedidoDomicilioPublico() {
         const saboresTexto = item.sabores && item.sabores.length > 0
           ? ` [${item.sabores.map((s) => s.nombre).join(" / ")}]`
           : "";
-        return `${item.cantidad}x ${item.producto.nombre}${saboresTexto}${item.notas ? ` (${item.notas})` : ""}`;
+        // 🆕 Incluir la cantidad de porciones elegida, si aplica
+        const porcionesTexto = item.porciones ? ` (cortar en ${item.porciones})` : "";
+        return `${item.cantidad}x ${item.producto.nombre}${saboresTexto}${porcionesTexto}${item.notas ? ` (${item.notas})` : ""}`;
       })
       .join("\n");
 
@@ -612,6 +642,7 @@ export default function PedidoDomicilioPublico() {
       // RLS de `pedidos` (anon no tiene SELECT sobre esa tabla, a propósito).
       // 🆕 sabor_ids: se agrega para que el RPC también inserte la
       // relación en detalle_pedido_sabores.
+      // 🆕 porciones_elegidas: valor entero elegido, o null si no aplica.
       const itemsParaRpc = pedido.map((item) => ({
         producto_id: item.producto.id,
         cantidad: item.cantidad,
@@ -619,6 +650,7 @@ export default function PedidoDomicilioPublico() {
         subtotal: item.producto.precio * item.cantidad,
         notas: item.notas || null,
         sabor_ids: item.sabores?.map((s) => s.id) ?? [],
+        porciones_elegidas: item.porciones ?? null,
       }));
 
       const { data: pedidoRpcData, error: errPedido } = await supabase.rpc(
@@ -1066,6 +1098,9 @@ export default function PedidoDomicilioPublico() {
                     {item.sabores && item.sabores.length > 0 && (
                       <p className="text-purple-500 text-xs">🍕 {item.sabores.map((s) => s.nombre).join(" / ")}</p>
                     )}
+                    {item.porciones && (
+                      <p className="text-orange-600 text-xs">🔪 Cortar en {item.porciones} porciones</p>
+                    )}
                     {item.notas && <p className="text-orange-500 text-xs italic">• {item.notas}</p>}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1309,6 +1344,31 @@ export default function PedidoDomicilioPublico() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* 🆕 Chips de porciones, solo si el producto tiene rango configurado. Obligatorio. */}
+            {productoSeleccionado.porciones_min != null && productoSeleccionado.porciones_max != null && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold text-gray-600 mb-1.5">
+                  ¿En cuántas partes lo dividimos?
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {generarOpcionesPorciones(productoSeleccionado.porciones_min, productoSeleccionado.porciones_max).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setPorcionesSeleccionadasTemp(n)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition ${
+                        porcionesSeleccionadasTemp === n
+                          ? "border-orange-500 bg-orange-50 text-orange-700"
+                          : "border-gray-200 text-gray-600"
+                      }`}
+                    >
+                      {n} porciones
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
