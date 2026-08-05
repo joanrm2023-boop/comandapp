@@ -34,6 +34,8 @@ interface ModalProductoProps {
         categoria_id: string;
         descripcion?: string | null;
         max_sabores?: number;
+        porciones_min?: number | null;
+        porciones_max?: number | null;
     } | null;
     }
 
@@ -71,6 +73,10 @@ export default function ModalProducto({
   const [nuevoSaborNombre, setNuevoSaborNombre] = useState("");
   const [agregandoSabor, setAgregandoSabor] = useState(false);
 
+  // 🆕 Porciones para dividir el producto (opcional, ej. pizzas)
+  const [porcionesMin, setPorcionesMin] = useState("");
+  const [porcionesMax, setPorcionesMax] = useState("");
+
   // Cargar categorías cuando se abre el modal
   useEffect(() => {
     if (open) {
@@ -86,10 +92,14 @@ export default function ModalProducto({
         setCategoriaId(productoAEditar.categoria_id);
         setDescripcion(productoAEditar.descripcion || "");
         setMaxSabores(String(productoAEditar.max_sabores && productoAEditar.max_sabores > 0 ? productoAEditar.max_sabores : 1));
+        setPorcionesMin(productoAEditar.porciones_min != null ? String(productoAEditar.porciones_min) : "");
+        setPorcionesMax(productoAEditar.porciones_max != null ? String(productoAEditar.porciones_max) : "");
         cargarSaboresAsignados(productoAEditar.id);
     } else if (open && !productoAEditar) {
         setMaxSabores("1");
         setSaboresSeleccionados([]);
+        setPorcionesMin("");
+        setPorcionesMax("");
     }
     }, [open, productoAEditar]);
 
@@ -224,6 +234,8 @@ export default function ModalProducto({
     setSaboresSeleccionados([]);
     setSaboresCategoria([]);
     setNuevoSaborNombre("");
+    setPorcionesMin("");
+    setPorcionesMax("");
     setError("");
   };
 
@@ -280,6 +292,21 @@ export default function ModalProducto({
         return;
     }
 
+    // 🆕 Validación de porciones
+    const minVal = porcionesMin.trim() ? Number(porcionesMin) : null;
+    const maxVal = porcionesMax.trim() ? Number(porcionesMax) : null;
+
+    if ((minVal !== null) !== (maxVal !== null)) {
+        setError("Si defines porciones, debes llenar mínimo y máximo");
+        return;
+    }
+    if (minVal !== null && maxVal !== null) {
+        if (minVal <= 0 || maxVal < minVal) {
+            setError("El rango de porciones no es válido");
+            return;
+        }
+    }
+
     try {
         setLoading(true);
         setError("");
@@ -295,6 +322,8 @@ export default function ModalProducto({
             precio: Number(precio),
             categoria_id: categoriaId,
             descripcion: descripcion.trim() || null,
+            porciones_min: minVal,
+            porciones_max: maxVal,
             })
             .eq('id', productoAEditar.id);
 
@@ -324,7 +353,9 @@ export default function ModalProducto({
                   categoria_id: categoriaId,
                   descripcion: descripcion.trim() || null,
                   negocio_id: usuarioData.negocio_id,
-                  activo: true
+                  activo: true,
+                  porciones_min: minVal,
+                  porciones_max: maxVal,
               }
               ])
               .select()
@@ -509,6 +540,40 @@ export default function ModalProducto({
               )}
             </div>
           )}
+
+          {/* 🆕 Porciones para dividir el producto (opcional, ej. pizzas) */}
+          <div className="space-y-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <Label>Porciones para dividir (opcional)</Label>
+            <p className="text-xs text-gray-500">
+              Si el producto se puede cortar en partes (ej. pizzas), define el rango. El cliente verá opciones cada 2 unidades dentro de ese rango.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Mínimo</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Ej: 4"
+                  value={porcionesMin}
+                  onChange={(e) => setPorcionesMin(e.target.value)}
+                  disabled={loading}
+                  className="h-9 bg-white text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Máximo</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Ej: 12"
+                  value={porcionesMax}
+                  onChange={(e) => setPorcionesMax(e.target.value)}
+                  disabled={loading}
+                  className="h-9 bg-white text-sm"
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Descripción */}
           <div className="space-y-2">

@@ -44,6 +44,7 @@ interface Pedido {
   } | null;
   clientes: {
     nombre: string;
+    telefono: string | null;
   } | null;
   mesero_modificado: {  // 👈 AGREGAR ESTO
     nombre: string;
@@ -259,7 +260,8 @@ export default function PedidosPage() {
           numero
         ),
         clientes (
-          nombre
+          nombre,
+          telefono
         ),
         detalle_pedidos (
           id,
@@ -595,7 +597,7 @@ export default function PedidosPage() {
         .select(`
           *,
           mesas (numero),
-          clientes (nombre),
+          clientes (nombre, telefono),
           detalle_pedidos (
             cantidad,
             notas,
@@ -647,6 +649,7 @@ export default function PedidosPage() {
         mesa: pedido.mesas?.numero || 'N/A',
         mesero: pedido.usuarios?.nombre || 'N/A',
         cliente: pedido.clientes?.nombre || 'N/A',
+        telefono_cliente: pedido.clientes?.telefono || null,
         fecha: fechaFormateada,
         items: pedido.detalle_pedidos.map((d: any) => ({
           cantidad: d.cantidad,
@@ -840,7 +843,7 @@ export default function PedidosPage() {
         *,
         negocio_id,
         mesas (numero),
-        clientes (nombre),
+        clientes (nombre, telefono),
         detalle_pedidos (
           cantidad,
           notas,
@@ -900,6 +903,7 @@ export default function PedidosPage() {
       mesa: pedido.mesas?.numero || 'N/A',
       mesero: pedido.usuarios?.nombre || 'N/A',
       cliente: pedido.clientes?.nombre || 'N/A',
+      telefono_cliente: pedido.clientes?.telefono || null,
       fecha: fechaFormateada,
       items: pedido.detalle_pedidos.map((d: any) => ({
         cantidad: d.cantidad,
