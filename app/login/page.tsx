@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [negocioEncontrado, setNegocioEncontrado] = useState<{
     nombre: string;
     logo_url: string | null;
+    nombre_sede: string | null;
   } | null>(null);
 
   // Debounce: Buscar negocio 500ms después de que el usuario deje de escribir
@@ -63,7 +64,8 @@ export default function LoginPage() {
         console.log('🏢 Negocio encontrado:', negocio.negocio_nombre);
         setNegocioEncontrado({
           nombre: negocio.negocio_nombre,
-          logo_url: negocio.negocio_logo_url
+          logo_url: negocio.negocio_logo_url,
+          nombre_sede: negocio.negocio_nombre_sede ?? null
         });
       } else {
         console.log('❌ Negocio no encontrado');
@@ -231,6 +233,11 @@ export default function LoginPage() {
               <CardTitle className="text-3xl font-black bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                 {negocioEncontrado?.nombre || 'DishHub'}
               </CardTitle>
+              {negocioEncontrado?.nombre_sede && (
+                <p className="text-sm font-semibold text-orange-400">
+                  {negocioEncontrado.nombre_sede}
+                </p>
+              )}
               <CardDescription className="text-sm text-zinc-400">
                 Ingresa tus credenciales para continuar
               </CardDescription>

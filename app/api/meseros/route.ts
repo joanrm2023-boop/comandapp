@@ -95,7 +95,29 @@ export async function POST(req: NextRequest) {
     let authUserId: string;
 
     if (authUserExistente) {
-      // Reutilizar la cuenta huérfana en vez de fallar con "already registered"
+      // ¿Esa cuenta de login ya está vinculada a algún usuario (de cualquier negocio)?
+      const { data: usuarioVinculado } = await supabaseAdmin
+        .from("usuarios")
+        .select("id, activo, rol")
+        .eq("auth_user_id", authUserExistente.id)
+        .maybeSingle();
+
+      if (usuarioVinculado) {
+        if (usuarioVinculado.activo || usuarioVinculado.rol !== "mesero") {
+          return NextResponse.json(
+            { error: "Este correo ya está en uso por otro usuario activo. Usa un correo diferente." },
+            { status: 409 }
+          );
+        }
+        // Mesero inactivo en otro negocio: liberar su login (la fila se conserva para el historial)
+        const { error: liberarError } = await supabaseAdmin
+          .from("usuarios")
+          .update({ auth_user_id: null })
+          .eq("id", usuarioVinculado.id);
+
+        if (liberarError) throw liberarError;
+      }
+
       authUserId = authUserExistente.id;
     } else {
       // Crear la cuenta de autenticación desde el servidor — esto NO

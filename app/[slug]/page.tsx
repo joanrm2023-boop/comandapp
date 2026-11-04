@@ -141,6 +141,7 @@ interface Negocio {
   mensaje_cierre_emergencia: string | null;
   imagen_fondo: string | null;
   zona_cobertura: string | null;
+  sedes: number | null;
 }
 
 export default function PedidoDomicilioPublico() {
@@ -226,7 +227,7 @@ export default function PedidoDomicilioPublico() {
 
       const { data: negocioData, error: negocioError } = await supabase
         .from("negocios")
-        .select("id, nombre, logo_url, imagen_portada, telefono, direccion, activo, suspendido, pedido_minimo, costo_domicilio, abierto, horarios, mensaje_cierre_emergencia, imagen_fondo, zona_cobertura")        .eq("slug", slug)
+        .select("id, nombre, logo_url, imagen_portada, telefono, direccion, activo, suspendido, pedido_minimo, costo_domicilio, abierto, horarios, mensaje_cierre_emergencia, imagen_fondo, zona_cobertura, sedes")        .eq("slug", slug)
         .single();
 
       if (negocioError || !negocioData) {
@@ -897,6 +898,9 @@ export default function PedidoDomicilioPublico() {
             )}
             <div>
               <h1 className="font-bold text-xl text-white leading-tight">{negocio?.nombre}</h1>
+              {negocio?.sedes != null && (
+                <p className="text-white/80 text-sm font-semibold">Sede: {negocio.sedes}</p>
+              )}
               <div className={`flex items-center gap-1.5 text-sm font-medium mt-1 ${negocioCerradoAhora() ? "text-red-400" : "text-emerald-400"}`}>
                 <span className={`w-2 h-2 rounded-full inline-block ${negocioCerradoAhora() ? "bg-red-400" : "bg-emerald-400"}`} />
                 {negocioCerradoAhora() ? "Cerrado ahora" : "Abierto ahora"}

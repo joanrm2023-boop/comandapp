@@ -43,6 +43,7 @@ import {
   EyeOff,
   MapPin,
   Soup,
+  Store,
 } from "lucide-react";
 
 interface Sabor {
@@ -102,7 +103,13 @@ export default function PaginaDomiciliosAdmin() {
   const [slugInput, setSlugInput] = useState("");
   const [errorSlug, setErrorSlug] = useState("");
   const [guardandoSlug, setGuardandoSlug] = useState(false);
-
+   // 🆕 Datos del negocio (sede, contacto)
+  const [nombreSedeInput, setNombreSedeInput] = useState("");
+  const [telefonoInput, setTelefonoInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [direccionInput, setDireccionInput] = useState("");
+  const [ciudadInput, setCiudadInput] = useState("");
+  const [guardandoDatosNegocio, setGuardandoDatosNegocio] = useState(false);
   const [pedidoMinimoActual, setPedidoMinimoActual] = useState(0);
   const [pedidoMinimoInput, setPedidoMinimoInput] = useState("0");
   const [guardandoPedidoMinimo, setGuardandoPedidoMinimo] = useState(false);
@@ -158,13 +165,18 @@ export default function PaginaDomiciliosAdmin() {
 
       const { data: negocioData } = await supabase
         .from("negocios")
-        .select("slug, pedido_minimo, costo_domicilio, horarios, abierto, mensaje_cierre_emergencia, zona_cobertura")
+                .select("slug, pedido_minimo, costo_domicilio, horarios, abierto, mensaje_cierre_emergencia, zona_cobertura, nombre_sede, telefono, email, direccion, ciudad")
         .eq("id", usuarioData.negocio_id)
         .single();
 
       if (negocioData) {
         setSlugActual(negocioData.slug);
         setSlugInput(negocioData.slug);
+        setNombreSedeInput(negocioData.nombre_sede ?? "");
+        setTelefonoInput(negocioData.telefono ?? "");
+        setEmailInput(negocioData.email ?? "");
+        setDireccionInput(negocioData.direccion ?? "");
+        setCiudadInput(negocioData.ciudad ?? "");
         const minimo = negocioData.pedido_minimo ?? 0;
         setPedidoMinimoActual(minimo);
         setPedidoMinimoInput(String(minimo));
@@ -299,6 +311,44 @@ export default function PaginaDomiciliosAdmin() {
     const url = `${window.location.origin}/${slugActual}`;
     navigator.clipboard.writeText(url);
     toast.success("Link copiado");
+  };
+
+  
+  // 🆕 Guardar datos del negocio (sede y contacto)
+  const guardarDatosNegocio = async () => {
+    const telefono = telefonoInput.replace(/\D/g, "");
+    if (telefono && telefono.length !== 10) {
+      toast.error("El teléfono debe tener 10 dígitos (es el WhatsApp que recibe los pedidos)");
+      return;
+    }
+    const email = emailInput.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Ingresa un correo válido");
+      return;
+    }
+
+    try {
+      setGuardandoDatosNegocio(true);
+      const { error } = await supabase
+        .from("negocios")
+        .update({
+          nombre_sede: nombreSedeInput.trim() || null,
+          telefono: telefono || null,
+          email: email || null,
+          direccion: direccionInput.trim() || null,
+          ciudad: ciudadInput.trim() || null,
+        })
+        .eq("id", negocioId);
+
+      if (error) throw error;
+
+      setTelefonoInput(telefono);
+      toast.success("Datos del negocio actualizados");
+    } catch (err: any) {
+      toast.error("Error al guardar: " + (err?.message || "desconocido"));
+    } finally {
+      setGuardandoDatosNegocio(false);
+    }
   };
 
   const guardarPedidoMinimo = async () => {
@@ -735,6 +785,59 @@ export default function PaginaDomiciliosAdmin() {
           <p className="text-zinc-500 text-sm mt-1">
             Configura tu link público y las fotos/descripciones que ven tus clientes al pedir a domicilio.
           </p>
+        </div>
+
+        
+        {/* 🆕 Sección: datos del negocio */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="bg-orange-500/10 p-2 rounded-lg">
+              <Store className="w-4 h-4 text-orange-500" />
+            </div>
+            <h2 className="font-bold text-white">Datos de tu negocio</h2>
+          </div>
+          <p className="text-zinc-500 text-xs -mt-1">
+            El teléfono es el WhatsApp al que llegan los pedidos de tu página. La dirección sale en el ticket impreso.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { label: "Nombre de la sede", value: nombreSedeInput, set: setNombreSedeInput, placeholder: "Ej: Sede Centro" },
+              { label: "Teléfono / WhatsApp", value: telefonoInput, set: setTelefonoInput, placeholder: "Ej: 3001234567" },
+              { label: "Correo", value: emailInput, set: setEmailInput, placeholder: "correo@negocio.com" },
+              { label: "Ciudad", value: ciudadInput, set: setCiudadInput, placeholder: "Ej: Bogotá" },
+            ].map((campo) => (
+              <div key={campo.label}>
+                <label className="text-xs text-zinc-400 mb-1 block">{campo.label}</label>
+                <input
+                  value={campo.value}
+                  onChange={(e) => campo.set(e.target.value)}
+                  placeholder={campo.placeholder}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-orange-500"
+                />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <label className="text-xs text-zinc-400 mb-1 block">Dirección</label>
+              <input
+                value={direccionInput}
+                onChange={(e) => setDireccionInput(e.target.value)}
+                placeholder="Ej: Calle 10 # 20-30, Barrio Centro"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-orange-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={guardarDatosNegocio}
+              disabled={guardandoDatosNegocio}
+              className="bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {guardandoDatosNegocio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Guardar
+            </button>
+          </div>
         </div>
 
         {/* Sección: link público (slug) */}

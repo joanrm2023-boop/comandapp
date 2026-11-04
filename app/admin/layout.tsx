@@ -27,6 +27,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [nombreUsuario, setNombreUsuario] = useState("Cargando...");
   const [nombreNegocio, setNombreNegocio] = useState("DishHub");
   const [logoNegocio, setLogoNegocio] = useState<string | null>(null);
+  const [sedeNegocio, setSedeNegocio] = useState<string | null>(null);
 
   useEffect(() => {
     cargarDatos();
@@ -69,13 +70,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           // Cargar datos del negocio
           const { data: negocioData, error: negocioError } = await supabase
             .from('negocios')
-            .select('nombre, logo_url')
+            .select('nombre, logo_url, nombre_sede')
             .eq('id', usuarioData.negocio_id)
             .single();
 
           if (negocioData && !negocioError) {
             setNombreNegocio(negocioData.nombre);
             setLogoNegocio(negocioData.logo_url);
+            setSedeNegocio(negocioData.nombre_sede);
           }
         }
       }
@@ -146,6 +148,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <h2 className="text-xl font-black bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                   {nombreNegocio}
                 </h2>
+                                {sedeNegocio && (
+                  <p className="text-xs font-semibold text-orange-400">{sedeNegocio}</p>
+                )}
                 <p className="text-xs text-zinc-500">Panel Admin</p>
               </div>
             </div>
