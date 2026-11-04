@@ -110,6 +110,7 @@ export default function PaginaDomiciliosAdmin() {
   const [direccionInput, setDireccionInput] = useState("");
   const [ciudadInput, setCiudadInput] = useState("");
   const [guardandoDatosNegocio, setGuardandoDatosNegocio] = useState(false);
+  const [datosNegocioAbierto, setDatosNegocioAbierto] = useState(false);
   const [pedidoMinimoActual, setPedidoMinimoActual] = useState(0);
   const [pedidoMinimoInput, setPedidoMinimoInput] = useState("0");
   const [guardandoPedidoMinimo, setGuardandoPedidoMinimo] = useState(false);
@@ -788,56 +789,70 @@ export default function PaginaDomiciliosAdmin() {
         </div>
 
         
-        {/* 🆕 Sección: datos del negocio */}
+                {/* 🆕 Sección: datos del negocio (desplegable) */}
         <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="bg-orange-500/10 p-2 rounded-lg">
-              <Store className="w-4 h-4 text-orange-500" />
-            </div>
-            <h2 className="font-bold text-white">Datos de tu negocio</h2>
-          </div>
-          <p className="text-zinc-500 text-xs -mt-1">
-            El teléfono es el WhatsApp al que llegan los pedidos de tu página. La dirección sale en el ticket impreso.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { label: "Nombre de la sede", value: nombreSedeInput, set: setNombreSedeInput, placeholder: "Ej: Sede Centro" },
-              { label: "Teléfono / WhatsApp", value: telefonoInput, set: setTelefonoInput, placeholder: "Ej: 3001234567" },
-              { label: "Correo", value: emailInput, set: setEmailInput, placeholder: "correo@negocio.com" },
-              { label: "Ciudad", value: ciudadInput, set: setCiudadInput, placeholder: "Ej: Bogotá" },
-            ].map((campo) => (
-              <div key={campo.label}>
-                <label className="text-xs text-zinc-400 mb-1 block">{campo.label}</label>
-                <input
-                  value={campo.value}
-                  onChange={(e) => campo.set(e.target.value)}
-                  placeholder={campo.placeholder}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-orange-500"
-                />
+          <button
+            type="button"
+            onClick={() => setDatosNegocioAbierto(!datosNegocioAbierto)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <div className="bg-orange-500/10 p-2 rounded-lg">
+                <Store className="w-4 h-4 text-orange-500" />
               </div>
-            ))}
-            <div className="sm:col-span-2">
-              <label className="text-xs text-zinc-400 mb-1 block">Dirección</label>
-              <input
-                value={direccionInput}
-                onChange={(e) => setDireccionInput(e.target.value)}
-                placeholder="Ej: Calle 10 # 20-30, Barrio Centro"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-orange-500"
-              />
+              <h2 className="font-bold text-white">Datos de tu negocio</h2>
             </div>
-          </div>
+            <ChevronDown
+              className={`w-5 h-5 text-zinc-500 transition-transform ${datosNegocioAbierto ? "rotate-180" : ""}`}
+            />
+          </button>
 
-          <div className="flex justify-end">
-            <button
-              onClick={guardarDatosNegocio}
-              disabled={guardandoDatosNegocio}
-              className="bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {guardandoDatosNegocio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Guardar
-            </button>
-          </div>
+          {datosNegocioAbierto && (
+            <>
+              <p className="text-zinc-500 text-xs -mt-1">
+                El teléfono es el WhatsApp al que llegan los pedidos de tu página. La dirección sale en el ticket impreso.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { label: "Nombre de la sede", value: nombreSedeInput, set: setNombreSedeInput, placeholder: "Ej: Sede Centro" },
+                  { label: "Teléfono / WhatsApp", value: telefonoInput, set: setTelefonoInput, placeholder: "Ej: 3001234567" },
+                  { label: "Correo", value: emailInput, set: setEmailInput, placeholder: "correo@negocio.com" },
+                  { label: "Ciudad", value: ciudadInput, set: setCiudadInput, placeholder: "Ej: Bogotá" },
+                ].map((campo) => (
+                  <div key={campo.label}>
+                    <label className="text-xs text-zinc-400 mb-1 block">{campo.label}</label>
+                    <input
+                      value={campo.value}
+                      onChange={(e) => campo.set(e.target.value)}
+                      placeholder={campo.placeholder}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-orange-500"
+                    />
+                  </div>
+                ))}
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-zinc-400 mb-1 block">Dirección</label>
+                  <input
+                    value={direccionInput}
+                    onChange={(e) => setDireccionInput(e.target.value)}
+                    placeholder="Ej: Calle 10 # 20-30, Barrio Centro"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={guardarDatosNegocio}
+                  disabled={guardandoDatosNegocio}
+                  className="bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {guardandoDatosNegocio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Guardar
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Sección: link público (slug) */}
