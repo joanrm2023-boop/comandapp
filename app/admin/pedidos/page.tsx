@@ -629,7 +629,7 @@ export default function PedidosPage() {
       // Obtener negocio
       const { data: negocioData } = await supabase
         .from('negocios')
-        .select('nombre, telefono, direccion, ciudad')
+        .select('nombre, telefono, direccion, ciudad, nombre_sede')
         .eq('id', pedido.negocio_id)
         .single();
 
@@ -685,7 +685,9 @@ export default function PedidosPage() {
           negocio: {
             nombre: negocioData?.nombre || 'DishHub',
             telefono: negocioData?.telefono || null,
-            direccion: negocioData?.direccion || null
+            direccion: negocioData?.direccion || null,
+            ciudad: negocioData?.ciudad || null,
+            nombre_sede: negocioData?.nombre_sede || null
           }
         }),
         signal: controller.signal
@@ -882,7 +884,7 @@ export default function PedidosPage() {
     // Obtener datos del negocio
     const { data: negocioData } = await supabase
       .from('negocios')
-      .select('nombre, telefono, direccion, ciudad')
+      .select('nombre, telefono, direccion, ciudad, nombre_sede')
       .eq('id', pedido.negocio_id)
       .single();
 
@@ -940,7 +942,9 @@ export default function PedidosPage() {
         negocio: {
           nombre: negocioData?.nombre || 'DishHub',
           telefono: negocioData?.telefono || null,
-          direccion: negocioData?.direccion || null
+          direccion: negocioData?.direccion || null,
+          ciudad: negocioData?.ciudad || null,
+          nombre_sede: negocioData?.nombre_sede || null
         }
       })
     });
