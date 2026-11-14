@@ -125,6 +125,7 @@ export default function VitrinaPage() {
   const [medioPago, setMedioPago] = useState("efectivo");
   const [imprimir, setImprimir] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [cestaAbierta, setCestaAbierta] = useState(false); // 🆕 hoja de la cesta en celular
 
   // 🆕 Edición del orden de categorías y orden de productos
   const [editandoCategorias, setEditandoCategorias] = useState(false);
@@ -146,6 +147,11 @@ export default function VitrinaPage() {
   useEffect(() => {
     cargarDatos();
   }, []);
+
+  // 🆕 Nombre de la pestaña del navegador (antes decía "Create Next App")
+  useEffect(() => {
+    document.title = `${nombreNegocio} - Vitrina`;
+  }, [nombreNegocio]);
 
   const cargarDatos = async () => {
     try {
@@ -308,7 +314,7 @@ export default function VitrinaPage() {
 
   const etiqueta = (p: Producto) => {
     const partes: string[] = [];
-    if (tieneSabores(p)) partes.push(p.max_sabores === 1 ? "1 sabor" : `hasta ${p.max_sabores} sabores`);
+    if (tieneSabores(p)) partes.push(p.max_sabores === 1 ? "1 sabor" : `${p.max_sabores} sabores`);
     if (tienePorciones(p)) partes.push("porciones");
     return partes.length ? partes.join(" · ") : null;
   };
@@ -503,6 +509,7 @@ export default function VitrinaPage() {
       setMedioPago("efectivo");
       setImprimir(false);
       setCategoriaActiva(categorias[0]?.id ?? null);
+      setCestaAbierta(false);
     } catch (err: any) {
       console.error("Error enviando pedido de vitrina:", err);
       // Si el pedido alcanzó a crearse pero falló el detalle, se anula para no dejarlo incompleto
@@ -545,183 +552,14 @@ export default function VitrinaPage() {
   const disponiblesModal = prodModal ? saboresPorProducto[prodModal.id] ?? [] : [];
   const maxModal = prodModal?.max_sabores ?? 1;
 
-  return (
-    <div className="h-screen flex flex-col bg-zinc-950 text-zinc-50 select-none">
-      {/* Header */}
-      <header className="h-16 shrink-0 px-5 flex items-center justify-between border-b border-zinc-800 bg-zinc-950">
-        <div className="flex items-center gap-3">
-          {logoNegocio ? (
-            <img src={logoNegocio} alt={nombreNegocio} className="w-11 h-11 rounded-xl object-cover border border-zinc-700" />
-          ) : (
-            <div className="w-11 h-11 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center">
-              <ChefHat className="w-5 h-5 text-orange-500" />
-            </div>
-          )}
-          <div className="leading-tight">
-            <p className="text-lg font-extrabold text-orange-400">{nombreNegocio}</p>
-            <p className="text-sm text-zinc-400">{nombreSede ? `${nombreSede} · Vitrina` : "Vitrina"}</p>
-          </div>
-        </div>
-        <button
-          onClick={cerrarSesion}
-          aria-label="Cerrar sesión"
-          className="w-11 h-11 rounded-xl border border-zinc-700 bg-zinc-900 flex items-center justify-center hover:bg-zinc-800"
-        >
-          <LogOut className="w-5 h-5 text-zinc-300" />
-        </button>
-      </header>
-
-      <div className="flex-1 flex flex-col md:flex-row min-h-0">
-        {/* Productos */}
-        <main className="flex-1 min-w-0 overflow-y-auto p-5 space-y-4">
-          {/* 🆕 Categorías: normal o en modo edición (flechas para moverlas) */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <nav aria-label="Categorías" className="flex flex-wrap gap-2.5 flex-1">
-              {categorias.map((c, index) => {
-                const activa = c.id === categoriaActiva;
-
-                if (editandoCategorias) {
-                  return (
-                    <div
-                      key={c.id}
-                      className="h-[52px] flex items-center gap-1 rounded-2xl border border-dashed border-orange-500/70 bg-zinc-900 px-1"
-                    >
-                      <button
-                        onClick={() => moverCategoria(c.id, -1)}
-                        disabled={index === 0}
-                        aria-label={`Mover ${c.nombre} a la izquierda`}
-                        className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 disabled:opacity-25"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                      <span className="px-1 text-base font-bold text-zinc-200 flex items-center gap-2">
-                        {c.icono && <span aria-hidden="true" className="text-xl">{c.icono}</span>}
-                        {c.nombre}
-                      </span>
-                      <button
-                        onClick={() => moverCategoria(c.id, 1)}
-                        disabled={index === categorias.length - 1}
-                        aria-label={`Mover ${c.nombre} a la derecha`}
-                        className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 disabled:opacity-25"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </div>
-                  );
-                }
-
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setCategoriaActiva(c.id)}
-                    aria-pressed={activa}
-                    className={`h-[52px] px-5 rounded-2xl text-base font-bold border transition flex items-center gap-2 ${
-                      activa
-                        ? "bg-orange-500 border-orange-500 text-zinc-950"
-                        : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
-                    }`}
-                  >
-                    {c.icono && <span aria-hidden="true" className="text-xl leading-none">{c.icono}</span>}
-                    {c.nombre}
-                  </button>
-                );
-              })}
-            </nav>
-
-            <button
-              onClick={() => setEditandoCategorias(!editandoCategorias)}
-              className={`h-[52px] px-4 rounded-2xl border text-sm font-bold flex items-center gap-2 shrink-0 ${
-                editandoCategorias
-                  ? "bg-green-600 border-green-600 text-white"
-                  : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
-              }`}
-            >
-              {editandoCategorias ? <Check className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
-              {editandoCategorias ? "Listo" : "Editar orden"}
-            </button>
-          </div>
-
-          {editandoCategorias && (
-            <p className="text-sm text-orange-300">
-              Usa las flechas para mover las categorías. El orden se guarda solo en esta tablet.
-            </p>
-          )}
-
-          {/* 🆕 Orden de los productos dentro de la categoría */}
-          {!editandoCategorias && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="flex items-center gap-1.5 text-sm text-zinc-400 mr-1">
-                <ArrowUpDown className="w-4 h-4" /> Ordenar:
-              </span>
-              {OPCIONES_ORDEN.map((o) => {
-                const on = ordenProductos === o.v;
-                return (
-                  <button
-                    key={o.v}
-                    onClick={() => cambiarOrdenProductos(o.v)}
-                    aria-pressed={on}
-                    className={`h-11 px-4 rounded-xl text-sm font-semibold border ${
-                      on
-                        ? "bg-orange-950/60 text-orange-300 border-orange-500"
-                        : "bg-zinc-900 text-zinc-300 border-zinc-700"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3.5">
-            {productosCategoria.map((p) => {
-              const et = etiqueta(p);
-              const enCesta = cesta.filter((i) => i.producto.id === p.id).reduce((s, i) => s + i.cantidad, 0);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => tocarProducto(p)}
-                  className={`relative h-36 p-4 rounded-2xl border bg-zinc-900 text-left flex flex-col justify-between active:scale-[0.97] transition ${
-                    enCesta > 0 ? "border-orange-500" : "border-zinc-800 hover:border-zinc-600"
-                  }`}
-                >
-                  {enCesta > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-7 h-7 px-2 rounded-full bg-orange-500 text-zinc-950 text-sm font-extrabold flex items-center justify-center">
-                      {enCesta}
-                    </span>
-                  )}
-                  <span className="text-lg font-bold leading-snug line-clamp-2">{p.nombre}</span>
-                  <span className="flex flex-col gap-1.5">
-                    {et ? (
-                      <span className="self-start text-xs text-orange-300 bg-orange-950/60 border border-orange-900 rounded-full px-2.5 py-0.5">
-                        {et}
-                      </span>
-                    ) : (
-                      <span className="self-start text-xs text-green-300 bg-green-950/60 border border-green-900 rounded-full px-2.5 py-0.5">
-                        Toque y listo
-                      </span>
-                    )}
-                    <span className="text-base font-semibold text-green-400">{pesos(p.precio)}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </main>
-
-        {/* Cesta */}
-        <aside aria-label="Cesta" className="md:w-[400px] shrink-0 border-t md:border-t-0 md:border-l border-zinc-800 bg-zinc-900/40 flex flex-col min-h-0">
-          <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-            <h2 className="text-xl font-extrabold">Cesta</h2>
-            <span className="text-sm text-zinc-400">
-              {unidades ? `${unidades} producto${unidades > 1 ? "s" : ""}` : "Sin productos"}
-            </span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-5 space-y-2.5 min-h-[120px]">
+  // 🆕 Contenido de la cesta (lista + pie). Se usa en el panel lateral
+  // (tablet/PC) y en la hoja que sube desde abajo (celular).
+  const contenidoCesta = (
+    <>
+          <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-[100px]">
             {cesta.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-500 py-10">
-                <ShoppingBag className="w-10 h-10" />
+              <div className="h-full flex flex-col items-center justify-center gap-2 text-zinc-500 py-4">
+                <ShoppingBag className="w-8 h-8" />
                 <span className="text-zinc-400">La cesta está vacía</span>
               </div>
             )}
@@ -777,7 +615,8 @@ export default function VitrinaPage() {
             ))}
           </div>
 
-          <div className="p-5 border-t border-zinc-800 space-y-3">
+          {/* 🆕 Pie de la cesta más compacto: siempre visible sin bajar */}
+          <div className="p-4 border-t border-zinc-800 space-y-2.5 shrink-0">
             <div className="grid grid-cols-4 gap-2">
               {MEDIOS_PAGO.map((m) => {
                 const on = medioPago === m.v;
@@ -786,7 +625,7 @@ export default function VitrinaPage() {
                     key={m.v}
                     onClick={() => setMedioPago(m.v)}
                     aria-pressed={on}
-                    className={`h-12 rounded-xl text-sm font-semibold ${
+                    className={`h-11 rounded-xl text-sm font-semibold ${
                       on
                         ? "bg-orange-950/60 text-orange-300 border-2 border-orange-500"
                         : "bg-zinc-900 text-zinc-300 border border-zinc-700"
@@ -798,7 +637,7 @@ export default function VitrinaPage() {
               })}
             </div>
 
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 cursor-pointer">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 cursor-pointer">
               <span>
                 <span className="block font-semibold">Imprimir ticket</span>
                 <span className="block text-xs text-zinc-400">
@@ -816,22 +655,259 @@ export default function VitrinaPage() {
               </span>
             </label>
 
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg text-zinc-300">Total</span>
-              <span className="text-3xl font-extrabold text-orange-400">{pesos(total)}</span>
+            {/* 🆕 Total y botón en la misma fila para ahorrar alto */}
+            <div className="flex items-center gap-3">
+              <div className="leading-tight shrink-0">
+                <span className="block text-sm text-zinc-400">Total</span>
+                <span className="block text-2xl font-extrabold text-orange-400">{pesos(total)}</span>
+              </div>
+              <button
+                onClick={confirmarPedido}
+                disabled={cesta.length === 0 || enviando}
+                className="flex-1 h-14 rounded-2xl bg-orange-500 text-zinc-950 text-lg font-extrabold flex items-center justify-center gap-2 disabled:opacity-40"
+              >
+                {enviando ? <Loader2 className="w-6 h-6 animate-spin" /> : <Check className="w-6 h-6" strokeWidth={3} />}
+                {enviando ? "Enviando..." : "Confirmar"}
+              </button>
             </div>
+          </div>
+    </>
+  );
+
+
+  return (
+    // 🆕 h-dvh: alto real visible en tablet (descuenta la barra del navegador),
+    // así el botón "Confirmar pedido" siempre queda a la vista sin bajar.
+    <div className="h-dvh flex flex-col bg-zinc-950 text-zinc-50 select-none overflow-hidden">
+      {/* Header */}
+      <header className="h-14 shrink-0 px-4 flex items-center justify-between border-b border-zinc-800 bg-zinc-950">
+        <div className="flex items-center gap-3">
+          {logoNegocio ? (
+            <img src={logoNegocio} alt={nombreNegocio} className="w-11 h-11 rounded-xl object-cover border border-zinc-700" />
+          ) : (
+            <div className="w-11 h-11 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center">
+              <ChefHat className="w-5 h-5 text-orange-500" />
+            </div>
+          )}
+          <div className="leading-tight">
+            <p className="text-lg font-extrabold text-orange-400">{nombreNegocio}</p>
+            <p className="text-sm text-zinc-400">{nombreSede ? `${nombreSede} · Vitrina` : "Vitrina"}</p>
+          </div>
+        </div>
+        <button
+          onClick={cerrarSesion}
+          aria-label="Cerrar sesión"
+          className="w-11 h-11 rounded-xl border border-zinc-700 bg-zinc-900 flex items-center justify-center hover:bg-zinc-800"
+        >
+          <LogOut className="w-5 h-5 text-zinc-300" />
+        </button>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        {/* Productos */}
+        <main className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-4 space-y-3">
+          {/* 🆕 Categorías en UNA sola fila que se desliza de lado (antes ocupaban
+              varias filas y empujaban los productos hacia abajo) */}
+          <div className="flex items-center gap-2">
+            <nav aria-label="Categorías" className="flex gap-2 flex-1 min-w-0 overflow-x-auto pb-1">
+              {categorias.map((c, index) => {
+                const activa = c.id === categoriaActiva;
+
+                if (editandoCategorias) {
+                  return (
+                    <div
+                      key={c.id}
+                      className="h-12 shrink-0 flex items-center gap-1 rounded-2xl border border-dashed border-orange-500/70 bg-zinc-900 px-1 whitespace-nowrap"
+                    >
+                      <button
+                        onClick={() => moverCategoria(c.id, -1)}
+                        disabled={index === 0}
+                        aria-label={`Mover ${c.nombre} a la izquierda`}
+                        className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 disabled:opacity-25"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      <span className="px-1 text-base font-bold text-zinc-200 flex items-center gap-2">
+                        {c.icono && <span aria-hidden="true" className="text-xl">{c.icono}</span>}
+                        {c.nombre}
+                      </span>
+                      <button
+                        onClick={() => moverCategoria(c.id, 1)}
+                        disabled={index === categorias.length - 1}
+                        aria-label={`Mover ${c.nombre} a la derecha`}
+                        className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 disabled:opacity-25"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setCategoriaActiva(c.id)}
+                    aria-pressed={activa}
+                    className={`h-12 shrink-0 whitespace-nowrap px-4 rounded-2xl text-base font-bold border transition flex items-center gap-2 ${
+                      activa
+                        ? "bg-orange-500 border-orange-500 text-zinc-950"
+                        : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                    }`}
+                  >
+                    {c.icono && <span aria-hidden="true" className="text-xl leading-none">{c.icono}</span>}
+                    {c.nombre}
+                  </button>
+                );
+              })}
+            </nav>
 
             <button
-              onClick={confirmarPedido}
-              disabled={cesta.length === 0 || enviando}
-              className="w-full h-16 rounded-2xl bg-orange-500 text-zinc-950 text-xl font-extrabold flex items-center justify-center gap-2 disabled:opacity-40"
+              onClick={() => setEditandoCategorias(!editandoCategorias)}
+              className={`h-12 px-3 rounded-2xl border text-sm font-bold flex items-center gap-2 shrink-0 whitespace-nowrap ${
+                editandoCategorias
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
+              }`}
             >
-              {enviando ? <Loader2 className="w-6 h-6 animate-spin" /> : <Check className="w-6 h-6" strokeWidth={3} />}
-              {enviando ? "Enviando..." : "Confirmar pedido"}
+              {editandoCategorias ? <Check className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+              {editandoCategorias ? "Listo" : "Editar orden"}
             </button>
           </div>
+
+          {editandoCategorias && (
+            <p className="text-sm text-orange-300">
+              Usa las flechas para mover las categorías. El orden se guarda solo en esta tablet.
+            </p>
+          )}
+
+          {/* 🆕 Orden de los productos dentro de la categoría */}
+          {!editandoCategorias && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <span className="flex items-center gap-1.5 text-sm text-zinc-400 mr-1 shrink-0">
+                <ArrowUpDown className="w-4 h-4" /> Ordenar:
+              </span>
+              {OPCIONES_ORDEN.map((o) => {
+                const on = ordenProductos === o.v;
+                return (
+                  <button
+                    key={o.v}
+                    onClick={() => cambiarOrdenProductos(o.v)}
+                    aria-pressed={on}
+                    className={`h-10 px-3 shrink-0 whitespace-nowrap rounded-xl text-sm font-semibold border ${
+                      on
+                        ? "bg-orange-950/60 text-orange-300 border-orange-500"
+                        : "bg-zinc-900 text-zinc-300 border-zinc-700"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 🆕 Tarjetas más anchas y con alto flexible: los nombres largos
+              (ej. "PIZZA FAMILIAR: ESPECIALES") ya no se amontonan */}
+          {/* 2 columnas en celular, más en tablet/PC */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2.5 sm:gap-3 pt-1">
+            {productosCategoria.map((p) => {
+              const et = etiqueta(p);
+              const enCesta = cesta.filter((i) => i.producto.id === p.id).reduce((s, i) => s + i.cantidad, 0);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => tocarProducto(p)}
+                  className={`relative min-h-[120px] p-3.5 rounded-2xl border bg-zinc-900 text-left flex flex-col justify-between gap-3 active:scale-[0.97] transition ${
+                    enCesta > 0 ? "border-orange-500" : "border-zinc-800 hover:border-zinc-600"
+                  }`}
+                >
+                  {enCesta > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-7 h-7 px-2 rounded-full bg-orange-500 text-zinc-950 text-sm font-extrabold flex items-center justify-center">
+                      {enCesta}
+                    </span>
+                  )}
+                  <span className="text-base font-bold leading-tight line-clamp-2 pr-2">{p.nombre}</span>
+                  <span className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1.5">
+                    {et ? (
+                      <span className="text-xs leading-tight text-orange-300 bg-orange-950/60 border border-orange-900 rounded-lg px-2 py-1">
+                        {et}
+                      </span>
+                    ) : (
+                      <span className="text-xs leading-tight text-green-300 bg-green-950/60 border border-green-900 rounded-lg px-2 py-1">
+                        Toque y listo
+                      </span>
+                    )}
+                    <span className="text-base font-bold text-green-400 whitespace-nowrap">{pesos(p.precio)}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </main>
+
+        {/* Cesta lateral: solo en pantallas anchas (tablet horizontal / PC) */}
+        <aside aria-label="Cesta" className="hidden lg:flex lg:w-[360px] xl:w-[400px] shrink-0 border-l border-zinc-800 bg-zinc-900/40 flex-col min-h-0">
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+            <h2 className="text-xl font-extrabold">Cesta</h2>
+            <span className="text-sm text-zinc-400">
+              {unidades ? `${unidades} producto${unidades > 1 ? "s" : ""}` : "Sin productos"}
+            </span>
+          </div>
+
+          {contenidoCesta}
         </aside>
       </div>
+
+      {/* 🆕 Celular / tablet vertical: barra inferior con el total que abre la cesta */}
+      <div className="lg:hidden shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3 flex items-center gap-3">
+        <div className="leading-tight min-w-0">
+          <span className="block text-xs text-zinc-400">
+            {unidades ? `${unidades} producto${unidades > 1 ? "s" : ""}` : "Cesta vacía"}
+          </span>
+          <span className="block text-xl font-extrabold text-orange-400">{pesos(total)}</span>
+        </div>
+        <button
+          onClick={() => setCestaAbierta(true)}
+          disabled={cesta.length === 0}
+          className="flex-1 h-14 rounded-2xl bg-orange-500 text-zinc-950 text-lg font-extrabold flex items-center justify-center gap-2 disabled:opacity-40"
+        >
+          <ShoppingBag className="w-5 h-5" />
+          Ver cesta
+        </button>
+      </div>
+
+      {/* 🆕 Hoja de la cesta en celular (sube desde abajo) */}
+      {cestaAbierta && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/70 flex items-end"
+          onClick={() => setCestaAbierta(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cesta"
+            className="w-full max-h-[92dvh] rounded-t-3xl border-t border-zinc-700 bg-zinc-950 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 pt-3 pb-2 flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-xl font-extrabold">Cesta</h2>
+                <span className="text-sm text-zinc-400">
+                  {unidades ? `${unidades} producto${unidades > 1 ? "s" : ""}` : "Sin productos"}
+                </span>
+              </div>
+              <button
+                onClick={() => setCestaAbierta(false)}
+                aria-label="Cerrar cesta"
+                className="w-12 h-12 rounded-xl border border-zinc-700 bg-zinc-900 flex items-center justify-center"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {contenidoCesta}
+          </div>
+        </div>
+      )}
 
       {/* Modal sabores / porciones */}
       {prodModal && (
