@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard, UtensilsCrossed, Home, ShoppingBag as ShoppingBagIcon, Printer } from "lucide-react";
+import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard, UtensilsCrossed, Home, ShoppingBag as ShoppingBagIcon, Printer, FileDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // Tipos
 interface Pedido {
   id: string;
+  numero_pedido: number | null;
   mesa_id: string;
   estado: string;
   total: number;
@@ -43,8 +44,16 @@ export default function VentasPage() {
   const [fechaFin, setFechaFin] = useState("");
 
   // 🆕 Datos del negocio para el encabezado del ticket de resumen, y estado del botón
-  const [negocioInfo, setNegocioInfo] = useState<{ nombre: string; nombre_sede: string | null; direccion: string | null } | null>(null);
+  const [negocioInfo, setNegocioInfo] = useState<{
+    nombre: string;
+    nombre_sede: string | null;
+    direccion: string | null;
+    telefono?: string | null;
+    ciudad?: string | null;
+    logo_url?: string | null;
+  } | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
+  const [generandoPdf, setGenerandoPdf] = useState(false);
 
   useEffect(() => {
     cargarVentas();
@@ -110,7 +119,7 @@ export default function VentasPage() {
       // 🆕 Datos del negocio para el ticket de resumen
       const { data: negocioData } = await supabase
         .from('negocios')
-        .select('nombre, nombre_sede, direccion')
+        .select('nombre, nombre_sede, direccion, telefono, ciudad, logo_url')
         .eq('id', negocioId)
         .single();
       if (negocioData) setNegocioInfo(negocioData);
@@ -122,6 +131,7 @@ export default function VentasPage() {
         .from('pedidos')
         .select(`
           id,
+          numero_pedido,
           mesa_id,
           estado,
           total,
@@ -298,6 +308,396 @@ export default function VentasPage() {
     }
   };
 
+  // 🆕 Carga el logo del negocio como imagen PNG redonda para el PDF.
+  // Si no hay logo o no se puede leer, devuelve null y el PDF usa las iniciales.
+  const cargarLogoParaPdf = (url: string | null | undefined): Promise<string | null> =>
+    new Promise((resolve) => {
+      if (!url) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const lado = 240;
+          const canvas = document.createElement('canvas');
+          canvas.width = lado;
+          canvas.height = lado;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(lado / 2, lado / 2, lado / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.clip();
+          // Recorte tipo "cover" para que el logo llene el círculo
+          const escala = Math.max(lado / img.width, lado / img.height);
+          const w = img.width * escala;
+          const h = img.height * escala;
+          ctx.drawImage(img, (lado - w) / 2, (lado - h) / 2, w, h);
+          resolve(canvas.toDataURL('image/png'));
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+
+  // 🆕 Descargar el reporte de ventas del período seleccionado en PDF
+  const descargarPdf = async () => {
+    if (pedidos.length === 0) {
+      alert('No hay ventas en el período seleccionado');
+      return;
+    }
+
+    try {
+      setGenerandoPdf(true);
+
+      const { jsPDF } = await import('jspdf');
+      const autoTable = (await import('jspdf-autotable')).default;
+
+      // Las fechas de es-CO traen espacios especiales ("p. m.") que la fuente del PDF no muestra
+      const limpio = (t: string) => t.replace(/[  ]/g, ' ');
+      const pesos = (n: number) => '$' + limpio(Math.round(Number(n) || 0).toLocaleString('es-CO'));
+      const fechaCorta = (d: Date) =>
+        d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const hora = (d: Date) =>
+        limpio(d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }));
+
+      // ---- Textos del período y filtros ----
+      const { inicio, fin } = obtenerRangoFechas();
+      let periodo: string;
+      if (filtroFecha === 'hoy' || filtroFecha === 'ayer' || fechaCorta(inicio) === fechaCorta(fin)) {
+        const dia = inicio.toLocaleDateString('es-CO', { weekday: 'long' });
+        periodo = `${dia.charAt(0).toUpperCase() + dia.slice(1)} ${fechaCorta(inicio)}`;
+      } else if (filtroFecha === 'mes') {
+        const m = inicio.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+        periodo = m.charAt(0).toUpperCase() + m.slice(1);
+      } else {
+        periodo = `${fechaCorta(inicio)} - ${fechaCorta(fin)}`;
+      }
+      const nombresFecha: Record<string, string> = {
+        hoy: 'Hoy', ayer: 'Ayer', semana: 'Ultima semana', mes: 'Este mes', personalizado: 'Rango',
+      };
+      const nombresPago: Record<string, string> = {
+        todos: 'Todos los pagos', efectivo: 'Efectivo', nequi: 'Nequi', daviplata: 'Daviplata', bold: 'Bold',
+      };
+      const textoFiltro = `Filtro: ${nombresFecha[filtroFecha] || filtroFecha} · ${nombresPago[filtroPago] || filtroPago}`;
+
+      const nombreNegocio = negocioInfo?.nombre || 'DishHub';
+      const sede = negocioInfo?.nombre_sede || '';
+      const lineaNegocio = [
+        sede,
+        negocioInfo?.direccion,
+        negocioInfo?.ciudad,
+        negocioInfo?.telefono ? `Tel ${negocioInfo.telefono}` : null,
+      ].filter(Boolean).join(' · ');
+
+      // ---- Datos (los mismos que ya están en pantalla) ----
+      const met = calcularMetricas();
+      const porTipo = calcularResumenPorTipo();
+      const filasTipo = [
+        { nombre: 'Mesas', ...porTipo.mesa },
+        { nombre: 'Para llevar', ...porTipo.para_llevar },
+        { nombre: 'Domicilio', ...porTipo.domicilio },
+      ].filter((t) => t.cantidad > 0).sort((a, b) => b.total - a.total);
+      const filasPago = calcularResumenPorPago().filter((p) => p.cantidad > 0).sort((a, b) => b.total - a.total);
+      const pct = (v: number) => (met.totalVentas > 0 ? (v / met.totalVentas) * 100 : 0);
+
+      const varios = fechaCorta(inicio) !== fechaCorta(fin);
+      const detalle = [...pedidos]
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .map((p) => {
+          const d = new Date(p.created_at);
+          const tipo = getTipoPedido(p);
+          return {
+            numero: p.numero_pedido ? `#${p.numero_pedido}` : `#${p.id.slice(-6).toUpperCase()}`,
+            hora: varios ? `${fechaCorta(d)} ${hora(d)}` : hora(d),
+            tipo: tipo === 'domicilio' ? 'Domicilio' : tipo === 'para_llevar' ? 'Para llevar' : 'Mesa',
+            mesa: tipo === 'mesa' ? `Mesa ${p.mesas.numero}` : p.mesas.numero,
+            pago: nombresPago[p.medio_pago] || p.medio_pago || 'Sin medio',
+            total: Number(p.total),
+          };
+        });
+
+      // ---- Documento ----
+      const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+      const W = doc.internal.pageSize.getWidth();   // 612
+      const H = doc.internal.pageSize.getHeight();  // 792
+      const M = 36;                                 // margen lateral
+      const NARANJA: [number, number, number] = [249, 115, 22];
+      const ROJO: [number, number, number] = [239, 68, 68];
+      const NARANJA_OSCURO: [number, number, number] = [194, 65, 12];
+      const TINTA: [number, number, number] = [24, 24, 27];
+      const GRIS: [number, number, number] = [113, 113, 122];
+      const LINEA: [number, number, number] = [228, 228, 231];
+
+      // Membrete: franja degradada naranja → rojo
+      const ALTO_FRANJA = 84;
+      const pasos = 80;
+      for (let i = 0; i < pasos; i++) {
+        const t = i / (pasos - 1);
+        doc.setFillColor(
+          Math.round(NARANJA[0] + (ROJO[0] - NARANJA[0]) * t),
+          Math.round(NARANJA[1] + (ROJO[1] - NARANJA[1]) * t),
+          Math.round(NARANJA[2] + (ROJO[2] - NARANJA[2]) * t)
+        );
+        doc.rect((W / pasos) * i, 0, W / pasos + 1, ALTO_FRANJA, 'F');
+      }
+
+      // Logo (o iniciales si no hay logo)
+      const logo = await cargarLogoParaPdf(negocioInfo?.logo_url);
+      const cx = M + 26;
+      const cy = ALTO_FRANJA / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.circle(cx, cy, 27, 'F');
+      if (logo) {
+        doc.addImage(logo, 'PNG', cx - 25, cy - 25, 50, 50);
+      } else {
+        const iniciales = nombreNegocio.split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+        doc.setTextColor(...ROJO);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.text(iniciales, cx, cy + 6, { align: 'center' });
+      }
+
+      // Nombre y datos del negocio
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(19);
+      doc.text(nombreNegocio, M + 64, cy - 3);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      if (lineaNegocio) doc.text(lineaNegocio, M + 64, cy + 12, { maxWidth: W - M * 2 - 64 - 170 });
+
+      // Título del documento (derecha)
+      doc.setFontSize(7.5);
+      doc.text('REPORTE DE VENTAS', W - M, cy - 14, { align: 'right', charSpace: 1.5 });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(periodo, W - M, cy + 1, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(textoFiltro, W - M, cy + 13, { align: 'right' });
+
+      // Tarjetas de resumen
+      const yCards = ALTO_FRANJA + 20;
+      const gap = 12;
+      const anchoCard = (W - M * 2 - gap * 2) / 3;
+      const tarjetas = [
+        { l: 'TOTAL VENDIDO', v: pesos(met.totalVentas), destacada: true },
+        { l: 'PEDIDOS', v: String(met.totalPedidos), destacada: false },
+        { l: 'TICKET PROMEDIO', v: pesos(met.ticketPromedio), destacada: false },
+      ];
+      tarjetas.forEach((c, i) => {
+        const x = M + i * (anchoCard + gap);
+        if (c.destacada) {
+          doc.setFillColor(255, 247, 237);
+          doc.roundedRect(x, yCards, anchoCard, 52, 6, 6, 'F');
+        }
+        doc.setDrawColor(...LINEA);
+        doc.setLineWidth(0.8);
+        doc.roundedRect(x, yCards, anchoCard, 52, 6, 6, 'S');
+        doc.setFillColor(...NARANJA);
+        doc.rect(x + 3, yCards, anchoCard - 6, 3, 'F');
+        doc.setTextColor(...GRIS);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.text(c.l, x + 12, yCards + 18, { charSpace: 0.8 });
+        doc.setTextColor(...(c.destacada ? NARANJA_OSCURO : TINTA));
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.text(c.v, x + 12, yCards + 40);
+      });
+
+      // Estilo común de las tablas
+      const estiloTabla = {
+        theme: 'plain' as const,
+        styles: { font: 'helvetica', fontSize: 8.5, textColor: TINTA, cellPadding: { top: 4.5, bottom: 4.5, left: 6, right: 6 } },
+        headStyles: { fillColor: [39, 39, 42] as [number, number, number], textColor: 255, fontStyle: 'bold' as const, fontSize: 7.5 },
+        alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
+        bodyStyles: { lineColor: LINEA, lineWidth: { bottom: 0.6 } },
+      };
+
+      const titulo = (texto: string, x: number, y: number) => {
+        doc.setTextColor(...NARANJA_OSCURO);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(texto, x, y, { charSpace: 0.8 });
+      };
+
+      // Barra de porcentaje dentro de la columna 2
+      const barra = (data: any, valores: number[]) => {
+        if (data.section !== 'body' || data.column.index !== 2) return;
+        const v = valores[data.row.index] ?? 0;
+        const x = data.cell.x + 4;
+        const y = data.cell.y + data.cell.height / 2 - 2.5;
+        const w = data.cell.width - 8;
+        doc.setFillColor(244, 244, 245);
+        doc.roundedRect(x, y, w, 5, 2.5, 2.5, 'F');
+        if (v > 0) {
+          doc.setFillColor(...NARANJA);
+          doc.roundedRect(x, y, Math.max(5, (w * v) / 100), 5, 2.5, 2.5, 'F');
+        }
+      };
+
+      // Dos resúmenes lado a lado
+      const yRes = yCards + 52 + 28;
+      const anchoMitad = (W - M * 2 - 18) / 2;
+      const columnasRes = (primera: string) => [primera, 'Ped.', '', '%', 'Total'];
+      const estiloColsRes = {
+        1: { halign: 'right' as const, cellWidth: 30 },
+        2: { cellWidth: 52 },
+        3: { halign: 'right' as const, cellWidth: 32 },
+        4: { halign: 'right' as const, fontStyle: 'bold' as const },
+      };
+
+      titulo('POR TIPO DE PEDIDO', M, yRes - 8);
+      const pctTipo = filasTipo.map((t) => pct(t.total));
+      autoTable(doc, {
+        ...estiloTabla,
+        startY: yRes,
+        margin: { left: M, right: W - M - anchoMitad },
+        tableWidth: anchoMitad,
+        head: [columnasRes('Tipo')],
+        body: filasTipo.map((t, i) => [t.nombre, t.cantidad, '', `${pctTipo[i].toFixed(0)}%`, pesos(t.total)]),
+        columnStyles: estiloColsRes,
+        didParseCell: (data: any) => {
+          if (data.section === 'head' && [1, 3, 4].includes(data.column.index)) data.cell.styles.halign = 'right';
+        },
+        didDrawCell: (data: any) => barra(data, pctTipo),
+      });
+      const finTipo = (doc as any).lastAutoTable.finalY;
+
+      const xPago = M + anchoMitad + 18;
+      titulo('POR MEDIO DE PAGO', xPago, yRes - 8);
+      const pctPago = filasPago.map((p) => pct(p.total));
+      autoTable(doc, {
+        ...estiloTabla,
+        startY: yRes,
+        margin: { left: xPago, right: M },
+        tableWidth: anchoMitad,
+        head: [columnasRes('Medio')],
+        body: filasPago.map((p, i) => [p.nombre, p.cantidad, '', `${pctPago[i].toFixed(0)}%`, pesos(p.total)]),
+        columnStyles: estiloColsRes,
+        didParseCell: (data: any) => {
+          if (data.section === 'head' && [1, 3, 4].includes(data.column.index)) data.cell.styles.halign = 'right';
+        },
+        didDrawCell: (data: any) => barra(data, pctPago),
+      });
+      const finPago = (doc as any).lastAutoTable.finalY;
+
+      // Encabezado pequeño para las páginas 2 en adelante
+      const encabezadoChico = () => {
+        doc.setTextColor(...TINTA);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(sede ? `${nombreNegocio} · ${sede}` : nombreNegocio, M, 30);
+        doc.setTextColor(...GRIS);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(`Reporte de ventas · ${periodo}`, W - M, 30, { align: 'right' });
+        doc.setDrawColor(...NARANJA);
+        doc.setLineWidth(2);
+        doc.line(0, 42, W, 42);
+      };
+
+      // Detalle de pedidos
+      const colorTipo: Record<string, [number, number, number]> = {
+        'Mesa': [234, 88, 12],
+        'Domicilio': [185, 28, 28],
+        'Para llevar': [63, 63, 70],
+      };
+      const yDet = Math.max(finTipo, finPago) + 32;
+      titulo('DETALLE DE PEDIDOS', M, yDet - 8);
+      autoTable(doc, {
+        ...estiloTabla,
+        startY: yDet,
+        margin: { left: M, right: M, top: 64, bottom: 50 },
+        head: [['#', varios ? 'Fecha / hora' : 'Hora', 'Tipo', 'Mesa / canal', 'Pago', 'Total']],
+        body: detalle.map((d) => [d.numero, d.hora, d.tipo, d.mesa, d.pago, pesos(d.total)]),
+        foot: [[{ content: `TOTAL (${met.totalPedidos} pedidos)`, colSpan: 5 }, pesos(met.totalVentas)]],
+        showFoot: 'lastPage',
+        footStyles: { fillColor: [255, 255, 255], textColor: TINTA, fontStyle: 'bold', fontSize: 10, lineColor: TINTA, lineWidth: { top: 1.2 } },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 42 },
+          2: { fontStyle: 'bold' },
+          5: { halign: 'right', fontStyle: 'bold' },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === 2) {
+            data.cell.styles.textColor = colorTipo[data.cell.raw as string] || TINTA;
+          }
+          if (data.section === 'head' && data.column.index === 5) {
+            data.cell.styles.halign = 'right';
+          }
+          if (data.section === 'foot' && data.column.index === 1) {
+            data.cell.styles.halign = 'right';
+          }
+        },
+        didDrawPage: (data: any) => {
+          if (data.pageNumber > 1) encabezadoChico();
+        },
+      });
+
+      // Firmas al final (en una página nueva si no caben)
+      let yFirma = (doc as any).lastAutoTable.finalY + 60;
+      if (yFirma > H - 70) {
+        doc.addPage();
+        encabezadoChico();
+        yFirma = 110;
+      }
+      const anchoFirma = (W - M * 2 - 40) / 2;
+      doc.setDrawColor(...TINTA);
+      doc.setLineWidth(0.7);
+      doc.setTextColor(...GRIS);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      [['Entregado por', M], ['Revisado por', M + anchoFirma + 40]].forEach(([texto, x]) => {
+        doc.line(x as number, yFirma, (x as number) + anchoFirma, yFirma);
+        doc.text(texto as string, x as number, yFirma + 12);
+      });
+
+      // Pie de página en todas las páginas
+      const generado = limpio(new Date().toLocaleString('es-CO', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+      }));
+      const totalPaginas = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPaginas; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(...LINEA);
+        doc.setLineWidth(0.6);
+        doc.line(M, H - 34, W - M, H - 34);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...GRIS);
+        doc.text('Generado por ', M, H - 20);
+        const x1 = M + doc.getTextWidth('Generado por ');
+        doc.setTextColor(...NARANJA);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DishHub', x1, H - 20);
+        const x2 = x1 + doc.getTextWidth('DishHub');
+        doc.setTextColor(...GRIS);
+        doc.setFont('helvetica', 'normal');
+        doc.text(` · ${generado}`, x2, H - 20);
+        doc.text(`Pagina ${i} de ${totalPaginas}`, W - M, H - 20, { align: 'right' });
+      }
+
+      // Nombre del archivo: ventas-sede-1-2026-11-14.pdf
+      const iso = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const slugSede = (sede || nombreNegocio)
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const rango = iso(inicio) === iso(fin) ? iso(inicio) : `${iso(inicio)}_a_${iso(fin)}`;
+      doc.save(`ventas-${slugSede}-${rango}.pdf`);
+    } catch (error: any) {
+      console.error('Error generando PDF:', error);
+      alert('No se pudo generar el PDF: ' + (error?.message || 'error desconocido'));
+    } finally {
+      setGenerandoPdf(false);
+    }
+  };
+
   const obtenerProductosMasVendidos = (): ProductoVendido[] => {
     const productosMap = new Map<string, ProductoVendido>();
 
@@ -408,15 +808,28 @@ export default function VentasPage() {
             </div>
           </div>
 
-          {/* 🆕 Imprimir el resumen del período seleccionado */}
-          <Button
-            onClick={imprimirResumen}
-            disabled={imprimiendo || pedidos.length === 0}
-            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 h-12 px-6 text-base font-semibold"
-          >
-            {imprimiendo ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Printer className="w-5 h-5 mr-2" />}
-            {imprimiendo ? 'Imprimiendo...' : 'Imprimir resumen'}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* 🆕 Imprimir el resumen del período seleccionado */}
+            <Button
+              onClick={imprimirResumen}
+              disabled={imprimiendo || pedidos.length === 0}
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 h-12 px-6 text-base font-semibold"
+            >
+              {imprimiendo ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Printer className="w-5 h-5 mr-2" />}
+              {imprimiendo ? 'Imprimiendo...' : 'Imprimir resumen'}
+            </Button>
+
+            {/* 🆕 Descargar el reporte del período seleccionado en PDF */}
+            <Button
+              onClick={descargarPdf}
+              disabled={generandoPdf || pedidos.length === 0}
+              variant="outline"
+              className="h-12 px-6 text-base font-semibold border-2 border-orange-500 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
+            >
+              {generandoPdf ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <FileDown className="w-5 h-5 mr-2" />}
+              {generandoPdf ? 'Generando...' : 'Descargar PDF'}
+            </Button>
+          </div>
         </div>
 
         {/* Filtros de Fecha */}
