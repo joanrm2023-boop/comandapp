@@ -206,6 +206,7 @@ export default function PedidosPage() {
           (payload) => {
             console.log('🟢 Nuevo pedido del negocio:', payload.new);
             cargarPedidos();
+            if (payload.new.imprimir === false) return; // vitrina con interruptor apagado
             imprimirPedidoAutomatico(payload.new.id);
           }
         )
