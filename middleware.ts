@@ -8,7 +8,7 @@ export async function middleware(req: NextRequest) {
   console.log('🔒 MIDDLEWARE ejecutándose en:', pathname)
 
   // Solo aplicar en rutas protegidas
-  if (!pathname.startsWith('/admin') && !pathname.startsWith('/mesero')) {
+  if (!pathname.startsWith('/admin') && !pathname.startsWith('/mesero') && !pathname.startsWith('/vitrina')) {
     console.log('✅ Ruta no protegida, permitiendo acceso')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.next()
@@ -45,17 +45,22 @@ export async function middleware(req: NextRequest) {
 
   const rol = rolCookie.value
 
-  // 🚨 Validar acceso según rol
-  if (pathname.startsWith('/admin') && rol !== 'admin') {
-    console.log('🚨 BLOQUEADO: Usuario con rol', rol, 'intentó acceder a admin')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    return NextResponse.redirect(new URL('/mesero/menumesero', req.url))
+  // 🚨 Validar acceso según rol: cada rol solo entra a su sección
+  const inicioPorRol: Record<string, string> = {
+    admin: '/admin/menu',
+    mesero: '/mesero/menumesero',
+    vitrina: '/vitrina',
   }
 
-  if (pathname.startsWith('/mesero') && rol !== 'mesero') {
-    console.log('⚠️ Admin intentó acceder a ruta mesero, redirigiendo')
+  const permitido =
+    (pathname.startsWith('/admin') && rol === 'admin') ||
+    (pathname.startsWith('/mesero') && rol === 'mesero') ||
+    (pathname.startsWith('/vitrina') && rol === 'vitrina')
+
+  if (!permitido) {
+    console.log('🚨 BLOQUEADO: rol', rol, 'intentó entrar a', pathname)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    return NextResponse.redirect(new URL('/admin/menu', req.url))
+    return NextResponse.redirect(new URL(inicioPorRol[rol] ?? '/login', req.url))
   }
 
   console.log('✅ ACCESO PERMITIDO - Rol:', rol)
@@ -66,6 +71,7 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     '/admin/:path*',
-    '/mesero/:path*'
+    '/mesero/:path*',
+    '/vitrina/:path*'
   ]
 }

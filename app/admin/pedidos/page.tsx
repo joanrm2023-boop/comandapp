@@ -767,7 +767,7 @@ export default function PedidosPage() {
     const mesaNumero = pedido.mesas.numero.toLowerCase();
     
     if (mesaNumero.includes('domicilio')) return 'domicilio';
-    if (mesaNumero.includes('llevar')) return 'para_llevar';
+        if (mesaNumero.includes('llevar') || mesaNumero.includes('vitrina')) return 'para_llevar';
     return 'mesa';
   };
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard, UtensilsCrossed, Home, ShoppingBag as ShoppingBagIcon } from "lucide-react";
+import { Calendar, DollarSign, ShoppingBag, TrendingUp, Clock, ChevronDown, ChevronUp, Loader2, CreditCard, UtensilsCrossed, Home, ShoppingBag as ShoppingBagIcon, Printer } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // Tipos
@@ -41,6 +41,10 @@ export default function VentasPage() {
   const [mostrarDetalle, setMostrarDetalle] = useState(false);
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
+
+  // 🆕 Datos del negocio para el encabezado del ticket de resumen, y estado del botón
+  const [negocioInfo, setNegocioInfo] = useState<{ nombre: string; nombre_sede: string | null; direccion: string | null } | null>(null);
+  const [imprimiendo, setImprimiendo] = useState(false);
 
   useEffect(() => {
     cargarVentas();
@@ -102,6 +106,15 @@ export default function VentasPage() {
       if (!usuarioData) return;
 
       const negocioId = usuarioData.negocio_id;
+
+      // 🆕 Datos del negocio para el ticket de resumen
+      const { data: negocioData } = await supabase
+        .from('negocios')
+        .select('nombre, nombre_sede, direccion')
+        .eq('id', negocioId)
+        .single();
+      if (negocioData) setNegocioInfo(negocioData);
+
       const { inicio, fin } = obtenerRangoFechas();
 
       // Construir query base
@@ -191,6 +204,98 @@ export default function VentasPage() {
       domicilio: armar(deTipo('domicilio')),
       para_llevar: armar(deTipo('para_llevar')),
     };
+  };
+
+  // 🆕 Totales por medio de pago (sobre los pedidos ya filtrados por fecha/medio de pago)
+  const calcularResumenPorPago = () => {
+    const MEDIOS: [string, string][] = [
+      ['efectivo', 'Efectivo'],
+      ['nequi', 'Nequi'],
+      ['daviplata', 'Daviplata'],
+      ['bold', 'Bold'],
+    ];
+    const resumen = MEDIOS.map(([valor, nombre]) => {
+      const lista = pedidos.filter((p) => p.medio_pago === valor);
+      return { nombre, cantidad: lista.length, total: lista.reduce((s, p) => s + Number(p.total), 0) };
+    });
+    // Pedidos sin medio de pago registrado, si los hay
+    const sinMedio = pedidos.filter((p) => !MEDIOS.some(([v]) => v === p.medio_pago));
+    if (sinMedio.length > 0) {
+      resumen.push({
+        nombre: 'Sin medio',
+        cantidad: sinMedio.length,
+        total: sinMedio.reduce((s, p) => s + Number(p.total), 0),
+      });
+    }
+    return resumen;
+  };
+
+  // 🆕 Enviar el resumen del período seleccionado al servidor de impresión
+  const imprimirResumen = async () => {
+    if (pedidos.length === 0) {
+      alert('No hay ventas en el período seleccionado');
+      return;
+    }
+
+    try {
+      setImprimiendo(true);
+
+      const { inicio, fin } = obtenerRangoFechas();
+      const f = (d: Date) =>
+        d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+      let titulo: string;
+      if (filtroFecha === 'hoy') {
+        titulo = `CIERRE DEL DIA ${f(inicio)}`;
+      } else if (filtroFecha === 'mes') {
+        titulo = `VENTAS ${inicio.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }).toUpperCase()}`;
+      } else if (f(inicio) === f(fin)) {
+        titulo = `VENTAS DEL ${f(inicio)}`;
+      } else {
+        titulo = `VENTAS ${f(inicio)} - ${f(fin)}`;
+      }
+
+      const porTipo = calcularResumenPorTipo();
+      const met = calcularMetricas();
+
+      const resumen = {
+        titulo,
+        subtitulo: filtroPago !== 'todos' ? `Solo pagos con ${filtroPago}` : '',
+        porTipo: [
+          { nombre: 'Mesas', ...porTipo.mesa },
+          { nombre: 'Para llevar', ...porTipo.para_llevar },
+          { nombre: 'Domicilio', ...porTipo.domicilio },
+        ],
+        totalPedidos: met.totalPedidos,
+        totalVentas: met.totalVentas,
+        ticketPromedio: met.ticketPromedio,
+        porPago: calcularResumenPorPago(),
+      };
+
+      // Si el servidor de impresión no responde en 4 s, se cancela
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const response = await fetch('http://localhost:3001/print-resumen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumen, negocio: negocioInfo }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const resultado = await response.json();
+      if (!resultado.success) throw new Error(resultado.error || 'Error al imprimir');
+    } catch (error: any) {
+      console.error('Error imprimiendo resumen:', error);
+      alert(
+        error?.name === 'AbortError' || error?.message?.includes('fetch')
+          ? 'No se encontró el servidor de impresión. Verifica que esté abierto en este computador.'
+          : 'No se pudo imprimir: ' + (error?.message || 'error desconocido')
+      );
+    } finally {
+      setImprimiendo(false);
+    }
   };
 
   const obtenerProductosMasVendidos = (): ProductoVendido[] => {
@@ -302,6 +407,16 @@ export default function VentasPage() {
               </p>
             </div>
           </div>
+
+          {/* 🆕 Imprimir el resumen del período seleccionado */}
+          <Button
+            onClick={imprimirResumen}
+            disabled={imprimiendo || pedidos.length === 0}
+            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 h-12 px-6 text-base font-semibold"
+          >
+            {imprimiendo ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Printer className="w-5 h-5 mr-2" />}
+            {imprimiendo ? 'Imprimiendo...' : 'Imprimir resumen'}
+          </Button>
         </div>
 
         {/* Filtros de Fecha */}

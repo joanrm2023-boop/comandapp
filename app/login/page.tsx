@@ -163,7 +163,10 @@ export default function LoginPage() {
         } else if (usuarioData.rol === 'mesero') {
           console.log('✅ Redirigiendo a /mesero/menumesero');
           window.location.href = '/mesero/menumesero';
-        }else {
+        } else if (usuarioData.rol === 'vitrina') {
+          console.log('✅ Redirigiendo a /vitrina');
+          window.location.href = '/vitrina';
+        } else {
           console.error('❌ Rol no válido:', usuarioData.rol);
           setError('Rol de usuario no válido');
           await supabase.auth.signOut();
