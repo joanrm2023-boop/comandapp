@@ -445,56 +445,26 @@ export default function VitrinaPage() {
     if (enviando || cesta.length === 0 || !negocioId || !mesaVitrinaId || !usuarioId) return;
 
     setEnviando(true);
-    let pedidoId: string | null = null;
 
     try {
-      const { data: pedidoData, error: errorPedido } = await supabase
-        .from("pedidos")
-        .insert([{
-          mesa_id: mesaVitrinaId,
-          mesero_id: usuarioId,
-          negocio_id: negocioId,
-          cliente_id: null,
-          estado: "vendido",
-          total,
-          es_domicilio: false,
-          direccion_domicilio: null,
-          valor_domicilio: 0,
-          medio_pago: medioPago,
-          notas: null,
-          imprimir,
-        }])
-        .select("id, numero_pedido")
-        .single();
+      // Pedido + productos + sabores en una sola transacción (función crear_pedido_vitrina).
+      // Así la página de Pedidos solo se entera cuando todo ya está guardado.
+      const items = cesta.map((item) => ({
+        producto_id: item.producto.id,
+        cantidad: item.cantidad,
+        notas: item.nota || null,
+        porciones_elegidas: item.porciones,
+        sabor_ids: item.sabores.map((s) => s.id),
+      }));
+
+      const { data: pedidoData, error: errorPedido } = await supabase.rpc("crear_pedido_vitrina", {
+        p_mesa_id: mesaVitrinaId,
+        p_medio_pago: medioPago,
+        p_imprimir: imprimir,
+        p_items: items,
+      });
 
       if (errorPedido || !pedidoData) throw errorPedido ?? new Error("No se pudo crear el pedido");
-      pedidoId = pedidoData.id;
-
-      // Uno por uno para saber el id de cada detalle y asociarle sus sabores
-      for (const item of cesta) {
-        const { data: detalle, error: errorDetalle } = await supabase
-          .from("detalle_pedidos")
-          .insert([{
-            pedido_id: pedidoData.id,
-            producto_id: item.producto.id,
-            cantidad: item.cantidad,
-            precio_unitario: item.producto.precio,
-            subtotal: item.producto.precio * item.cantidad,
-            notas: item.nota || null,
-            porciones_elegidas: item.porciones,
-          }])
-          .select("id")
-          .single();
-
-        if (errorDetalle || !detalle) throw errorDetalle ?? new Error("No se pudo guardar un producto");
-
-        if (item.sabores.length > 0) {
-          const { error: errorSabores } = await supabase
-            .from("detalle_pedido_sabores")
-            .insert(item.sabores.map((s) => ({ detalle_pedido_id: detalle.id, sabor_id: s.id })));
-          if (errorSabores) throw errorSabores;
-        }
-      }
 
       const numero = pedidoData.numero_pedido ?? pedidoData.id.slice(-6).toUpperCase();
       const pagoTxt = MEDIOS_PAGO.find((m) => m.v === medioPago)?.label ?? medioPago;
@@ -512,10 +482,7 @@ export default function VitrinaPage() {
       setCestaAbierta(false);
     } catch (err: any) {
       console.error("Error enviando pedido de vitrina:", err);
-      // Si el pedido alcanzó a crearse pero falló el detalle, se anula para no dejarlo incompleto
-      if (pedidoId) {
-        await supabase.from("pedidos").update({ estado: "cancelado" }).eq("id", pedidoId);
-      }
+      // Si algo falla, la función no guarda nada (ni pedido ni productos)
       toast.error("No se pudo enviar el pedido", { description: err?.message || "Intenta de nuevo" });
     } finally {
       setEnviando(false);
