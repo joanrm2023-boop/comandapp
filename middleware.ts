@@ -8,7 +8,12 @@ export async function middleware(req: NextRequest) {
   console.log('🔒 MIDDLEWARE ejecutándose en:', pathname)
 
   // Solo aplicar en rutas protegidas
-  if (!pathname.startsWith('/admin') && !pathname.startsWith('/mesero') && !pathname.startsWith('/vitrina')) {
+  if (
+    !pathname.startsWith('/admin') &&
+    !pathname.startsWith('/mesero') &&
+    !pathname.startsWith('/vitrina') &&
+    !pathname.startsWith('/propietario') // 🆕
+  ) {
     console.log('✅ Ruta no protegida, permitiendo acceso')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.next()
@@ -50,12 +55,14 @@ export async function middleware(req: NextRequest) {
     admin: '/admin/menu',
     mesero: '/mesero/menumesero',
     vitrina: '/vitrina',
+    propietario: '/propietario', // 🆕
   }
 
   const permitido =
     (pathname.startsWith('/admin') && rol === 'admin') ||
     (pathname.startsWith('/mesero') && rol === 'mesero') ||
-    (pathname.startsWith('/vitrina') && rol === 'vitrina')
+    (pathname.startsWith('/vitrina') && rol === 'vitrina') ||
+    (pathname.startsWith('/propietario') && rol === 'propietario') // 🆕
 
   if (!permitido) {
     console.log('🚨 BLOQUEADO: rol', rol, 'intentó entrar a', pathname)
@@ -72,6 +79,7 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/mesero/:path*',
-    '/vitrina/:path*'
+    '/vitrina/:path*',
+    '/propietario/:path*' // 🆕
   ]
 }

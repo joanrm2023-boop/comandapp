@@ -166,6 +166,9 @@ export default function LoginPage() {
         } else if (usuarioData.rol === 'vitrina') {
           console.log('✅ Redirigiendo a /vitrina');
           window.location.href = '/vitrina';
+        } else if (usuarioData.rol === 'propietario') {
+          console.log('✅ Redirigiendo a /propietario');
+          window.location.href = '/propietario';
         } else {
           console.error('❌ Rol no válido:', usuarioData.rol);
           setError('Rol de usuario no válido');

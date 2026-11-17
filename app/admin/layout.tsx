@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Home,
   UtensilsCrossed,
-  DollarSign,
   ListChecks,
   Menu,
   X,
@@ -14,7 +12,6 @@ import {
   Users,
   ChefHat,
   Armchair,
-  Package,
   Truck
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -95,13 +92,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   const links = [
-    { href: "/admin", label: "Dashboard", icon: Home },
     { href: "/admin/menu", label: "Menú", icon: UtensilsCrossed },
-    { href: "/admin/ventas", label: "Ventas", icon: DollarSign },
     { href: "/admin/pedidos", label: "Pedidos", icon: ListChecks },
     { href: "/admin/mesas", label: "Mesas", icon: Armchair },
     { href: "/admin/meseros", label: "Meseros", icon: Users },
-    { href: "/admin/inventario", label: "Inventario", icon: Package },
     { href: "/admin/pagina_Domicilios", label: "Página Domicilios", icon: Truck }
   ];
 
